@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from config.config_loader import get_config
 from utils.logger import setup_logger
 from utils.helpers import save_json, load_json, ensure_directory_exists
@@ -18,13 +18,17 @@ GPT4_OUTPUT_COST = 0.60
 
 COST_TRACKING_FILE = "data/cost_tracking.json"
 
+def get_current_month() -> str:
+    """Returns the current UTC month as YYYY-MM."""
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
 def initialize_cost_tracking():
     """Initialize the cost tracking file if it doesn't exist."""
     ensure_directory_exists("data")
     if not os.path.exists(COST_TRACKING_FILE):
         data = {
             "monthly_costs": {},
-            "current_month": datetime.utcnow().strftime("%Y-%m"),
+            "current_month": get_current_month(),
             "current_month_total": 0.0,
             "monthly_budget": config["openai"]["monthly_budget_usd"]
         }
@@ -32,10 +36,10 @@ def initialize_cost_tracking():
         log.info("Cost tracking initialized.")
     return load_json(COST_TRACKING_FILE)
 
-def track_api_usage(input_tokens, output_tokens, model):
+def track_api_usage(input_tokens: int, output_tokens: int, model: str) -> float:
     """Track API usage and calculate costs."""
     tracking_data = load_json(COST_TRACKING_FILE)
-    current_month = datetime.utcnow().strftime("%Y-%m")
+    current_month = get_current_month()
 
     if tracking_data["current_month"] != current_month:
         tracking_data["current_month"] = current_month
@@ -59,10 +63,10 @@ def track_api_usage(input_tokens, output_tokens, model):
 
     return total_cost
 
-def remaining_budget():
+def remaining_budget() -> float:
     """Calculate remaining budget for the current month."""
     tracking_data = load_json(COST_TRACKING_FILE)
-    current_month = datetime.utcnow().strftime("%Y-%m")
+    current_month = get_current_month()
 
     if tracking_data["current_month"] != current_month:
         tracking_data["current_month"] = current_month
@@ -73,7 +77,7 @@ def remaining_budget():
     spent = tracking_data.get("current_month_total", 0.0)
     return max(0.0, budget - spent)
 
-def can_process_batch(estimated_cost):
+def can_process_batch(estimated_cost: float) -> bool:
     """Determine if a batch can be processed within budget."""
     remaining = remaining_budget()
     if estimated_cost > remaining:
@@ -83,7 +87,7 @@ def can_process_batch(estimated_cost):
 def add_cost(estimated_cost: float):
     """Add estimated cost to the current month's total."""
     tracking_data = load_json(COST_TRACKING_FILE)
-    current_month = datetime.utcnow().strftime("%Y-%m")
+    current_month = get_current_month()
 
     if tracking_data["current_month"] != current_month:
         tracking_data["current_month"] = current_month

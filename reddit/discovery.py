@@ -31,9 +31,11 @@ def build_discovery_prompt(top_post_summaries: list[str]) -> list:
         {"role": "user", "content": prompt_content}
     ]
 
-def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.0") -> list:
-    """Uses GPT-4.0 to suggest exploratory subreddits."""
-    log.info(f"Running discovery with {len(summaries)} post summaries")
+def discover_adjacent_subreddits(summaries: list[str], model: str = None) -> list:
+    """Uses GPT-4.1 (from config) to suggest exploratory subreddits."""
+    model = model or config["openai"].get("model_deep", "gpt-4.1")
+    log.info(f"Running discovery with {len(summaries)} post summaries using model: {model}")
+    
     prompt = build_discovery_prompt(summaries)
 
     try:
@@ -67,3 +69,4 @@ def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.0") -> list:
     except Exception as e:
         log.error(f"Error in discovery process: {str(e)}")
         return []
+
