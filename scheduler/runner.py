@@ -1,8 +1,8 @@
 # scheduler/runner.py
-
 import json
 import uuid
 import os
+import time
 from datetime import datetime
 from reddit.scraper import scrape_all_configured_subreddits
 from db.writer import insert_post, update_post_insight
@@ -19,6 +19,28 @@ from utils.helpers import ensure_directory_exists
 
 log = setup_logger()
 config = get_config()
+
+
+def split_batch_by_token_limit(payload, model: str, token_limit: int = 1_900_000):
+    batches = []
+    current_batch = []
+    current_tokens = 0
+
+    for item in payload:
+        tokens = item.get("meta", {}).get("estimated_tokens", 300)
+        if current_tokens + tokens > token_limit:
+            batches.append(current_batch)
+            current_batch = []
+            current_tokens = 0
+
+        current_batch.append(item)
+        current_tokens += tokens
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
 
 def run_daily_pipeline():
     log.info("\U0001F680 Starting Reddit scraping and analysis pipeline")
@@ -48,49 +70,56 @@ def run_daily_pipeline():
         log.error("Insufficient budget for filtering. Exiting pipeline.")
         return
 
-    log.info(f"Submitting batch of {len(filter_batch)} posts for filtering...")
-    filter_file = generate_batch_payload(filter_batch, config["openai"]["model_filter"])
-    add_estimated_batch_cost(filter_batch, config["openai"]["model_filter"])
+    model_filter = config["openai"]["model_filter"]
+    filter_batches = split_batch_by_token_limit(filter_batch, model_filter)
+    all_result_paths = []
 
-    try:
-        batch_id = submit_batch_job(filter_file)
-        log.info(f"Batch job submitted with ID: {batch_id}")
-        batch_result = poll_batch_status(batch_id)
-        if batch_result.status != "completed":
-            log.error(f"Batch job failed with status: {batch_result.status}")
-            return
+    for i, batch in enumerate(filter_batches):
+        log.info(f"Submitting sub-batch {i + 1}/{len(filter_batches)} with {len(batch)} entries...")
+        filter_file = generate_batch_payload(batch, model_filter)
+        add_estimated_batch_cost(batch, model_filter)
 
-        result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
-        download_batch_results(batch_id, result_path)
-    except Exception as e:
-        log.error(f"Error in filtering batch: {str(e)}")
-        return
+        try:
+            batch_id = submit_batch_job(filter_file)
+            log.info(f"Batch job submitted with ID: {batch_id}")
+            batch_result = poll_batch_status(batch_id)
+            if batch_result.status != "completed":
+                log.error(f"Batch job failed with status: {batch_result.status}")
+                continue
+
+            result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
+            download_batch_results(batch_id, result_path)
+            all_result_paths.append(result_path)
+        except Exception as e:
+            log.error(f"Error in filtering batch: {str(e)}")
+            continue
 
     log.info("Step 4: Selecting high-potential posts...")
     high_potential_posts = []
     high_potential_ids = set()
 
     try:
-        with open(result_path, "r", encoding="utf-8") as f:
-            for line in f:
-                result = json.loads(line)
-                post_id = result["custom_id"]
-                content = result["response"]["choices"][0]["message"]["content"]
+        for result_path in all_result_paths:
+            with open(result_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    result = json.loads(line)
+                    post_id = result["custom_id"]
+                    content = result["response"]["choices"][0]["message"]["content"]
 
-                try:
-                    scores = json.loads(content)
-                    weights = config["scoring"]
-                    weighted_score = (
-                        scores["relevance_score"] * weights["relevance_weight"] +
-                        scores["emotional_intensity"] * weights["emotion_weight"] +
-                        scores["pain_point_clarity"] * weights["pain_point_weight"]
-                    )
-                    if weighted_score >= 7.0:
-                        high_potential_ids.add(post_id)
-                        high_potential_posts.append((post_id, scores))
-                        update_post_insight(post_id, scores)
-                except Exception as e:
-                    log.error(f"Error parsing result for post {post_id}: {str(e)}")
+                    try:
+                        scores = json.loads(content)
+                        weights = config["scoring"]
+                        weighted_score = (
+                            scores["relevance_score"] * weights["relevance_weight"] +
+                            scores["emotional_intensity"] * weights["emotion_weight"] +
+                            scores["pain_point_clarity"] * weights["pain_point_weight"]
+                        )
+                        if weighted_score >= 7.0:
+                            high_potential_ids.add(post_id)
+                            high_potential_posts.append((post_id, scores))
+                            update_post_insight(post_id, scores)
+                    except Exception as e:
+                        log.error(f"Error parsing result for post {post_id}: {str(e)}")
     except Exception as e:
         log.error(f"Error reading filter results: {str(e)}")
         return
