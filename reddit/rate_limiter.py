@@ -1,7 +1,6 @@
 # reddit/rate_limiter.py
 import time
-from datetime import datetime, timedelta, timezone
-from collections import deque
+from datetime import datetime, timezone
 from config.config_loader import get_config
 from utils.logger import setup_logger
 
@@ -9,27 +8,29 @@ log = setup_logger()
 config = get_config()
 
 class RedditRateLimiter:
-    """Modern and efficient rate limiter using UTC-aware timestamps."""
+    """Simple rolling window limiter — allows up to N requests per 60 seconds."""
 
     def __init__(self, requests_per_minute=None):
         self.limit = requests_per_minute or config["scraper"]["rate_limit_per_minute"]
-        self.timestamps = deque(maxlen=self.limit)  # Prevents overgrowth
+        self.window_start = datetime.now(timezone.utc)
+        self.request_count = 0
         log.info(f"Rate limiter initialized: {self.limit} requests/minute")
 
     def wait(self):
         now = datetime.now(timezone.utc)
-        window_start = now - timedelta(minutes=1)
+        elapsed = (now - self.window_start).total_seconds()
 
-        # Remove expired timestamps from the front
-        while self.timestamps and self.timestamps[0] < window_start:
-            self.timestamps.popleft()
+        if elapsed > 60:
+            # Reset window
+            self.window_start = now
+            self.request_count = 0
 
-        if len(self.timestamps) >= self.limit:
-            wait_until = self.timestamps[0] + timedelta(minutes=1)
-            sleep_time = (wait_until - now).total_seconds()
-            log.debug(f"Rate limit hit. Sleeping for {sleep_time:.2f} seconds...")
-            time.sleep(sleep_time)
-            # Update time after waking up to avoid stale timestamp
-            now = datetime.now(timezone.utc)
+        if self.request_count >= self.limit:
+            wait_time = 60 - elapsed
+            log.debug(f"Rate limit hit. Sleeping for {wait_time:.2f} seconds...")
+            time.sleep(wait_time)
+            self.window_start = datetime.now(timezone.utc)
+            self.request_count = 0
 
-        self.timestamps.append(now)
+        self.request_count += 1
+
