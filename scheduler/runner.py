@@ -104,7 +104,7 @@ def run_daily_pipeline():
 
     deep_posts = [p for p in scraped_posts if p["id"] in high_potential_ids]
     insight_batch = prepare_insight_batch(deep_posts)
-    insight_cost = estimate_insight_cost(deep_posts)
+    insight_cost = estimate_insight_cost(insight_batch)
     log.info(f"Estimated cost for insight analysis: ${insight_cost:.2f}")
 
     if not can_process_batch(insight_cost):

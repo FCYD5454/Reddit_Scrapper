@@ -1,5 +1,3 @@
-# gpt/batch_api.py
-
 import json
 import uuid
 import time
@@ -41,7 +39,7 @@ def generate_batch_payload(requests: list[dict], model: str) -> str:
 def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> str:
     """Submits a batch job to OpenAI."""
     with open(file_path, "rb") as f:
-        batch = openai.beta.batches.create(
+        batch = openai.batches.create(
             input_file=f,
             endpoint=endpoint,
             completion_window="24h",
@@ -52,7 +50,7 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
 def poll_batch_status(batch_id: str):
     """Polls status until job is complete or failed."""
     while True:
-        batch = openai.beta.batches.retrieve(batch_id)
+        batch = openai.batches.retrieve(batch_id)
         log.info(f"Batch {batch_id} status: {batch.status}")
         if batch.status in {"completed", "failed", "expired"}:
             return batch
@@ -60,7 +58,7 @@ def poll_batch_status(batch_id: str):
 
 def download_batch_results(batch_id: str, save_path: str):
     """Downloads and stores the results of a completed batch job."""
-    batch = openai.beta.batches.retrieve(batch_id)
+    batch = openai.batches.retrieve(batch_id)
     if batch.status != "completed":
         raise RuntimeError(f"Batch {batch_id} not completed.")
 
@@ -71,29 +69,27 @@ def download_batch_results(batch_id: str, save_path: str):
     log.info(f"Saved results to {save_path}")
 
 def add_estimated_batch_cost(requests: list[dict], model: str):
-    """Estimate and record the cost of the batch job using input/output pricing."""
-    if model == "gpt-4.1-mini":
-        input_cost_per_1k = 0.40
-        output_cost_per_1k = 1.60
-    elif model == "gpt-4.1":
-        input_cost_per_1k = 2.00
-        output_cost_per_1k = 8.00
-    else:
-        input_cost_per_1k = 1.00
-        output_cost_per_1k = 4.00  # Default estimate for unknown models
+    """Estimate and record the cost of the batch job using accurate pricing."""
+    # Define per-token costs for each model
+    pricing = {
+        "gpt-4.1": {"input": 0.0020, "output": 0.0080},
+        "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+    }
 
-    input_tokens = 0
-    output_tokens = 0
-    for req in requests:
-        meta = req.get("meta", {})
-        est_input = meta.get("estimated_tokens", 300)
-        input_tokens += est_input
-        output_tokens += 300  # Assume average output tokens
+    # Apply 50% discount for Batch API
+    discount_factor = 0.5
 
-    estimated_cost = (
-        (input_tokens / 1000) * input_cost_per_1k +
-        (output_tokens / 1000) * output_cost_per_1k
-    )
+    # Retrieve pricing for the specified model
+    model_pricing = pricing.get(model, {"input": 0.0010, "output": 0.0010})
 
-    log.info(f"Estimated cost for batch (input + output): ${estimated_cost:.2f}")
+    # Calculate total tokens
+    total_input_tokens = sum(req.get("meta", {}).get("estimated_tokens", 300) for req in requests)
+    total_output_tokens = len(requests) * 300  # Assuming 300 output tokens per request
+
+    # Calculate costs
+    input_cost = (total_input_tokens / 1_000_000) * model_pricing["input"] * discount_factor
+    output_cost = (total_output_tokens / 1_000_000) * model_pricing["output"] * discount_factor
+    estimated_cost = input_cost + output_cost
+
+    log.info(f"Estimated cost for batch (input + output): ${estimated_cost:.4f}")
     add_cost(estimated_cost)

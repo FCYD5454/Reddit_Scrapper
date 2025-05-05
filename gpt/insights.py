@@ -64,8 +64,17 @@ def prepare_insight_batch(posts: List[dict]) -> List[Dict[str, Any]]:
     return payload
 
 
-def estimate_insight_cost(posts: List[dict], avg_tokens: int = 700, input_cost_per_1k: float = 2.0, output_cost_per_1k: float = 8.0) -> float:
-    """Estimate GPT-4.1 cost for deep insight analysis."""
-    total_input = len(posts) * avg_tokens
-    total_output = len(posts) * 300
-    return (total_input / 1000 * input_cost_per_1k) + (total_output / 1000 * output_cost_per_1k)
+def estimate_insight_cost(batch: List[Dict]) -> float:
+    """Estimate GPT-4.1 cost using real input token metadata."""
+    cost_per_1k_input = 0.0020
+    cost_per_1k_output = 0.0080
+    discount = 0.05  # Batch API discount
+
+    input_tokens = sum(item.get("meta", {}).get("estimated_tokens", 700) for item in batch)
+    output_tokens = len(batch) * 300  # assume output tokens
+
+    return (
+        (input_tokens / 1_000_000 * cost_per_1k_input) +
+        (output_tokens / 1_000_000 * cost_per_1k_output)
+    ) * discount
+
