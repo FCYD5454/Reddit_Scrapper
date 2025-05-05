@@ -14,6 +14,7 @@ from utils.logger import setup_logger
 from utils.helpers import load_json, save_json, truncate
 from reddit.rate_limiter import RedditRateLimiter
 
+socket.setdefaulttimeout(10)  # Set global 10s timeout for HTTP
 log = setup_logger()
 config = get_config()
 
@@ -54,7 +55,6 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
         combined.extend(safe_fetch(subreddit.top(time_filter="month", limit=limit), "top"))
         combined.extend(safe_fetch(subreddit.hot(limit=limit), "hot"))
         combined.extend(safe_fetch(subreddit.new(limit=limit), "new"))
-
 
         for post in combined:
             limiter.wait()
