@@ -4,8 +4,9 @@ import praw
 import datetime
 import os
 import socket
-from prawcore.exceptions import RequestException
+import time
 
+from prawcore.exceptions import RequestException
 from db.reader import is_already_processed
 from db.writer import insert_post
 from reddit.discovery import discover_adjacent_subreddits
@@ -15,6 +16,7 @@ from utils.helpers import load_json, save_json, truncate
 from reddit.rate_limiter import RedditRateLimiter
 
 socket.setdefaulttimeout(10)  # Set global 10s timeout for HTTP
+
 log = setup_logger()
 config = get_config()
 
@@ -56,7 +58,11 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
         combined.extend(safe_fetch(subreddit.hot(limit=limit), "hot"))
         combined.extend(safe_fetch(subreddit.new(limit=limit), "new"))
 
-        for post in combined:
+        log.info(f"Total fetched posts to process from r/{subreddit_name}: {len(combined)}")
+        start_time = time.time()
+        for i, post in enumerate(combined):
+            if i % 10 == 0:
+                log.info(f"Processing post #{i+1}/{len(combined)}")
             limiter.wait()
 
             if post.id in seen_ids:
@@ -112,6 +118,7 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
     except Exception as e:
         log.error(f"Error fetching from r/{subreddit_name}: {str(e)}")
 
+    log.info(f"Finished processing posts from r/{subreddit_name} in {time.time() - start_time:.2f} seconds")
     return results
 
 
