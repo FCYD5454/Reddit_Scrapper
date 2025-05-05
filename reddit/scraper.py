@@ -3,6 +3,8 @@
 import praw
 import datetime
 import os
+import socket
+from prawcore.exceptions import RequestException
 
 from db.reader import is_already_processed
 from db.writer import insert_post
@@ -49,9 +51,10 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
         subreddit = reddit.subreddit(subreddit_name)
         combined = []
 
-        combined.extend(subreddit.top(time_filter="month", limit=limit))
-        combined.extend(subreddit.hot(limit=limit))
-        combined.extend(subreddit.new(limit=limit))
+        combined.extend(safe_fetch(subreddit.top(time_filter="month", limit=limit), "top"))
+        combined.extend(safe_fetch(subreddit.hot(limit=limit), "hot"))
+        combined.extend(safe_fetch(subreddit.new(limit=limit), "new"))
+
 
         for post in combined:
             limiter.wait()
@@ -181,3 +184,14 @@ def scrape_all_configured_subreddits() -> list:
 
     log.info(f"Total items scraped: {len(primary_posts)}")
     return primary_posts
+
+def safe_fetch(generator, name):
+    try:
+        log.info(f"→ Fetching {name}...")
+        return list(generator)
+    except (RequestException, socket.timeout) as e:
+        log.error(f"Timeout/error while fetching {name}: {e}")
+        return []
+    except Exception as e:
+        log.error(f"Unknown error while fetching {name}: {e}")
+        return []
