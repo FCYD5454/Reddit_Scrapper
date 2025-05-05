@@ -41,7 +41,7 @@ def generate_batch_payload(requests: list[dict], model: str) -> str:
 def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> str:
     """Submits a batch job to OpenAI."""
     with open(file_path, "rb") as f:
-        batch = openai.Batches.create(
+        batch = openai.beta.batches.create(
             input_file=f,
             endpoint=endpoint,
             completion_window="24h",
@@ -52,7 +52,7 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
 def poll_batch_status(batch_id: str):
     """Polls status until job is complete or failed."""
     while True:
-        batch = openai.Batches.retrieve(batch_id)
+        batch = openai.beta.batches.retrieve(batch_id)
         log.info(f"Batch {batch_id} status: {batch.status}")
         if batch.status in {"completed", "failed", "expired"}:
             return batch
@@ -60,7 +60,7 @@ def poll_batch_status(batch_id: str):
 
 def download_batch_results(batch_id: str, save_path: str):
     """Downloads and stores the results of a completed batch job."""
-    batch = openai.Batches.retrieve(batch_id)
+    batch = openai.beta.batches.retrieve(batch_id)
     if batch.status != "completed":
         raise RuntimeError(f"Batch {batch_id} not completed.")
 
@@ -71,19 +71,29 @@ def download_batch_results(batch_id: str, save_path: str):
     log.info(f"Saved results to {save_path}")
 
 def add_estimated_batch_cost(requests: list[dict], model: str):
-    """Estimate and record the cost of the batch job."""
+    """Estimate and record the cost of the batch job using input/output pricing."""
     if model == "gpt-4.1-mini":
-        cost_per_1k = 0.40
+        input_cost_per_1k = 0.40
+        output_cost_per_1k = 1.60
     elif model == "gpt-4.1":
-        cost_per_1k = 10.0  # Combined input + output est.
+        input_cost_per_1k = 2.00
+        output_cost_per_1k = 8.00
     else:
-        cost_per_1k = 1.0
+        input_cost_per_1k = 1.00
+        output_cost_per_1k = 4.00  # Default estimate for unknown models
 
-    total_tokens = 0
+    input_tokens = 0
+    output_tokens = 0
     for req in requests:
         meta = req.get("meta", {})
-        total_tokens += meta.get("estimated_tokens", 300) + 300  # Add output est.
+        est_input = meta.get("estimated_tokens", 300)
+        input_tokens += est_input
+        output_tokens += 300  # Assume average output tokens
 
-    estimated_cost = (total_tokens / 1000) * cost_per_1k
-    log.info(f"Estimated cost for batch: ${estimated_cost:.2f}")
+    estimated_cost = (
+        (input_tokens / 1000) * input_cost_per_1k +
+        (output_tokens / 1000) * output_cost_per_1k
+    )
+
+    log.info(f"Estimated cost for batch (input + output): ${estimated_cost:.2f}")
     add_cost(estimated_cost)
