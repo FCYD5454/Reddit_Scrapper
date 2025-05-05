@@ -9,7 +9,7 @@ config = get_config()
 PROMPT_PATH = "gpt/prompts/filter_prompt.txt"
 
 
-def load_filter_prompt_template():
+def load_filter_prompt_template() -> str:
     """Load the filter prompt template from file."""
     try:
         with open(PROMPT_PATH, 'r', encoding='utf-8') as f:
@@ -29,7 +29,7 @@ def load_filter_prompt_template():
 FILTER_PROMPT_TEMPLATE = load_filter_prompt_template()
 
 
-def build_filter_prompt(post: dict) -> List[Dict]:
+def build_filter_prompt(post: dict) -> List[Dict[str, str]]:
     """Constructs the GPT-4.1 Mini prompt for a Reddit post using template."""
     return [
         {"role": "system", "content": "You are a marketing assistant scoring Reddit posts for product relevance."},
@@ -39,6 +39,7 @@ def build_filter_prompt(post: dict) -> List[Dict]:
 
 def prepare_batch_payload(posts: List[dict]) -> List[Dict]:
     """Returns list of payloads for batch submission."""
+    model = config["openai"].get("model_filter", "gpt-4.1-mini")
     payload = []
     for post in posts:
         messages = build_filter_prompt(post)
@@ -47,15 +48,14 @@ def prepare_batch_payload(posts: List[dict]) -> List[Dict]:
             "messages": messages,
             "meta": {
                 "estimated_tokens": estimate_tokens(
-                    post.get("title", "") + post.get("body", ""),
-                    config["openai"].get("model_filter", "gpt-4.1-mini")
+                    post.get("title", "") + post.get("body", ""), model
                 )
             }
         })
     return payload
 
 
-def estimate_batch_cost(posts: List[dict], avg_tokens: int = 300, input_cost_per_1k: float = 0.40) -> float:
+def estimate_batch_cost(posts: List[dict], avg_tokens: int = 300, input_cost_per_1k: float = 0.004) -> float:
     """Rough estimate of GPT-4.1 Mini cost for the filtering batch."""
     total_tokens = len(posts) * avg_tokens
     return (total_tokens / 1000) * input_cost_per_1k

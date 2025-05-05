@@ -1,7 +1,7 @@
 # gpt/insights.py
 
 import os
-from typing import List, Dict
+from typing import List, Dict, Any
 from utils.helpers import estimate_tokens
 from utils.logger import setup_logger
 from config.config_loader import get_config
@@ -11,7 +11,7 @@ config = get_config()
 PROMPT_PATH = "gpt/prompts/insight_prompt.txt"
 
 
-def load_insight_prompt_template():
+def load_insight_prompt_template() -> str:
     """Load the insight prompt template from file."""
     try:
         with open(PROMPT_PATH, 'r', encoding='utf-8') as f:
@@ -32,7 +32,7 @@ def load_insight_prompt_template():
 INSIGHT_PROMPT_TEMPLATE = load_insight_prompt_template()
 
 
-def build_insight_prompt(post: dict) -> List[Dict]:
+def build_insight_prompt(post: dict) -> List[Dict[str, str]]:
     """Constructs the GPT-4.1 prompt for extracting deeper insights using template."""
     return [
         {
@@ -46,8 +46,9 @@ def build_insight_prompt(post: dict) -> List[Dict]:
     ]
 
 
-def prepare_insight_batch(posts: List[dict]) -> List[Dict]:
+def prepare_insight_batch(posts: List[dict]) -> List[Dict[str, Any]]:
     """Prepares GPT-4.1 insight batch payload."""
+    model = config["openai"].get("model_deep", "gpt-4.1")
     payload = []
     for post in posts:
         messages = build_insight_prompt(post)
@@ -56,8 +57,7 @@ def prepare_insight_batch(posts: List[dict]) -> List[Dict]:
             "messages": messages,
             "meta": {
                 "estimated_tokens": estimate_tokens(
-                    post.get("title", "") + post.get("body", ""),
-                    config["openai"].get("model_deep", "gpt-4.1")
+                    post.get("title", "") + post.get("body", ""), model
                 )
             }
         })

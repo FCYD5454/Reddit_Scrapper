@@ -41,7 +41,7 @@ def generate_batch_payload(requests: list[dict], model: str) -> str:
 def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> str:
     """Submits a batch job to OpenAI."""
     with open(file_path, "rb") as f:
-        batch = openai.beta.batches.create(
+        batch = openai.Batches.create(
             input_file=f,
             endpoint=endpoint,
             completion_window="24h",
@@ -52,7 +52,7 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
 def poll_batch_status(batch_id: str):
     """Polls status until job is complete or failed."""
     while True:
-        batch = openai.beta.batches.retrieve(batch_id)
+        batch = openai.Batches.retrieve(batch_id)
         log.info(f"Batch {batch_id} status: {batch.status}")
         if batch.status in {"completed", "failed", "expired"}:
             return batch
@@ -60,7 +60,7 @@ def poll_batch_status(batch_id: str):
 
 def download_batch_results(batch_id: str, save_path: str):
     """Downloads and stores the results of a completed batch job."""
-    batch = openai.beta.batches.retrieve(batch_id)
+    batch = openai.Batches.retrieve(batch_id)
     if batch.status != "completed":
         raise RuntimeError(f"Batch {batch_id} not completed.")
 
