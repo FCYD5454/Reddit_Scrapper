@@ -37,18 +37,20 @@ def generate_batch_payload(requests: list[dict], model: str) -> str:
     return path
 
 def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> str:
-    """Submits a batch job to OpenAI."""
-    with open(file_path, "rb") as f:
-        batch = openai.batches.create(
-            input_file=f,
-            endpoint=endpoint,
-            completion_window="24h",
-        )
+    """Uploads file and submits a batch job to OpenAI."""
+    uploaded_file = openai.files.create(file=open(file_path, "rb"), purpose="batch")
+    log.info(f"Uploaded file for batch: {uploaded_file.id}")
+
+    batch = openai.batches.create(
+        input_file_id=uploaded_file.id,
+        endpoint=endpoint,
+        completion_window="24h",
+    )
     log.info(f"Submitted batch job: {batch.id}")
     return batch.id
 
 def poll_batch_status(batch_id: str):
-    """Polls status until job is complete or failed."""
+    """Polls batch status every 15s until it's complete or failed."""
     while True:
         batch = openai.batches.retrieve(batch_id)
         log.info(f"Batch {batch_id} status: {batch.status}")
@@ -70,25 +72,22 @@ def download_batch_results(batch_id: str, save_path: str):
 
 def add_estimated_batch_cost(requests: list[dict], model: str):
     """Estimate and record the cost of the batch job using accurate pricing."""
-    # Define per-token costs for each model
+    # Per 1M token pricing in USD
     pricing = {
         "gpt-4.1": {"input": 0.0020, "output": 0.0080},
         "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
     }
 
-    # Apply 50% discount for Batch API
-    discount_factor = 0.5
+    discount_factor = 0.5  # 50% discount for batch jobs
 
-    # Retrieve pricing for the specified model
+    # Default fallback pricing
     model_pricing = pricing.get(model, {"input": 0.0010, "output": 0.0010})
 
-    # Calculate total tokens
-    total_input_tokens = sum(req.get("meta", {}).get("estimated_tokens", 300) for req in requests)
-    total_output_tokens = len(requests) * 300  # Assuming 300 output tokens per request
+    input_tokens = sum(req.get("meta", {}).get("estimated_tokens", 300) for req in requests)
+    output_tokens = len(requests) * 300  # Assumes ~300 output tokens per completion
 
-    # Calculate costs
-    input_cost = (total_input_tokens / 1_000_000) * model_pricing["input"] * discount_factor
-    output_cost = (total_output_tokens / 1_000_000) * model_pricing["output"] * discount_factor
+    input_cost = (input_tokens / 1_000_000) * model_pricing["input"] * discount_factor
+    output_cost = (output_tokens / 1_000_000) * model_pricing["output"] * discount_factor
     estimated_cost = input_cost + output_cost
 
     log.info(f"Estimated cost for batch (input + output): ${estimated_cost:.4f}")
