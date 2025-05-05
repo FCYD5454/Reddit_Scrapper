@@ -47,5 +47,5 @@ database:
   retention_days: 90                # Auto-remove posts older than this
 
 # Logging & output
-log_level: INFO
+log_level: DEBUG                   # For debug & reuse
 save_batch_payloads: true           # For debug & reuse
