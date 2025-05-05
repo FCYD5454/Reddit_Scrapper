@@ -79,3 +79,19 @@ def can_process_batch(estimated_cost):
     if estimated_cost > remaining:
         log.warning(f"Budget limit reached. Estimated cost ${estimated_cost:.2f}, remaining ${remaining:.2f}")
     return estimated_cost <= remaining
+
+def add_cost(estimated_cost: float):
+    """Add estimated cost to the current month's total."""
+    tracking_data = load_json(COST_TRACKING_FILE)
+    current_month = datetime.utcnow().strftime("%Y-%m")
+
+    if tracking_data["current_month"] != current_month:
+        tracking_data["current_month"] = current_month
+        tracking_data["current_month_total"] = 0.0
+
+    tracking_data["monthly_costs"].setdefault(current_month, 0.0)
+    tracking_data["monthly_costs"][current_month] += estimated_cost
+    tracking_data["current_month_total"] += estimated_cost
+
+    save_json(tracking_data, COST_TRACKING_FILE)
+    log.info(f"Added estimated cost: ${estimated_cost:.4f}")
