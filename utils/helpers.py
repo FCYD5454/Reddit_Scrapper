@@ -36,3 +36,12 @@ def format_datetime(dt=None):
 def days_ago(days: int) -> datetime:
     """Return datetime object for N days ago."""
     return datetime.utcnow() - timedelta(days=days)
+
+def truncate(text: str, max_tokens: int = 1000) -> str:
+    """Truncate a string to fit within a maximum token count."""
+    encoding = tiktoken.get_encoding("cl100k_base")
+    tokens = encoding.encode(text)
+    if len(tokens) <= max_tokens:
+        return text
+    truncated = encoding.decode(tokens[:max_tokens])
+    return truncated
