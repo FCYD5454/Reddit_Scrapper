@@ -64,10 +64,16 @@ def download_batch_results(batch_id: str, save_path: str):
     if batch.status != "completed":
         raise RuntimeError(f"Batch {batch_id} not completed.")
 
-    output_url = batch.output_file.url
-    response = requests.get(output_url)
+    output_file_id = batch.output_file_id  # ← updated attribute
+    if not output_file_id:
+        raise RuntimeError(f"No output file found for batch {batch_id}.")
+
+    output_file = openai.files.retrieve(output_file_id)
+    response = openai.files.content(output_file_id)
+
     with open(save_path, "wb") as f:
-        f.write(response.content)
+        f.write(response.read())
+
     log.info(f"Saved results to {save_path}")
 
 def add_estimated_batch_cost(requests: list[dict], model: str):
