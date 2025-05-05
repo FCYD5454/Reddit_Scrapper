@@ -48,6 +48,8 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
 
     skipped_due_to_age = 0
     skipped_due_to_duplicate = 0
+    skipped_due_to_rate_limit = 0
+    max_rate_limit_retries = 3  # Maximum number of times to retry on rate limit
 
     try:
         log.info(f"Fetching posts from r/{subreddit_name} using top, hot, and new...")
@@ -63,8 +65,27 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
         for i, post in enumerate(combined):
             if i % 10 == 0:
                 log.info(f"Processing post #{i+1}/{len(combined)}")
-            limiter.wait()
-            log.info("Finished waiting for rate limit")
+
+            rate_limit_retries = 0
+            while rate_limit_retries < max_rate_limit_retries:
+                try:
+                    limiter.wait()
+                    if i == 0:
+                        log.info("Finished waiting for rate limit")
+                    break  # Successfully waited, exit the retry loop
+                except Exception as e:
+                    rate_limit_retries += 1
+                    log.error(f"Rate limit error (retry {rate_limit_retries}/{max_rate_limit_retries}): {str(e)}")
+                    if rate_limit_retries >= max_rate_limit_retries:
+                        log.warning(f"Skipping post due to rate limit issues after {max_rate_limit_retries} retries")
+                        skipped_due_to_rate_limit += 1
+                        continue
+                    time.sleep(5)  # Wait a bit before retrying
+
+            # If we hit max retries, skip this post
+            if rate_limit_retries >= max_rate_limit_retries:
+                continue
+
             if post.id in seen_ids:
                 continue
             seen_ids.add(post.id)
@@ -92,8 +113,28 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
             if include_comments:
                 try:
                     post.comments.replace_more(limit=0)
+                    comments_processed = 0
                     for comment in post.comments.list():
-                        limiter.wait()
+                        rate_limit_retries = 0
+                        while rate_limit_retries < max_rate_limit_retries:
+                            try:
+                                limiter.wait()
+                                comments_processed += 1
+                                if comments_processed % 10 == 0:
+                                    log.debug(f"Processed {comments_processed} comments for post {post.id}")
+                                break  # Successfully waited, exit the retry loop
+                            except Exception as e:
+                                rate_limit_retries += 1
+                                log.error(f"Rate limit error in comments (retry {rate_limit_retries}/{max_rate_limit_retries}): {str(e)}")
+                                if rate_limit_retries >= max_rate_limit_retries:
+                                    skipped_due_to_rate_limit += 1
+                                    break
+                                time.sleep(5)  # Wait a bit before retrying
+
+                        # If we hit max retries, skip this comment
+                        if rate_limit_retries >= max_rate_limit_retries:
+                            continue
+
                         if comment.id in seen_ids:
                             continue
                         seen_ids.add(comment.id)
@@ -114,7 +155,7 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
                 except Exception as e:
                     log.warning(f"Failed to fetch comments for post {post.id}: {str(e)}")
 
-        log.info(f"r/{subreddit_name} — Found {len(results)} new items | Skipped {skipped_due_to_age} due to age | {skipped_due_to_duplicate} duplicates")
+        log.info(f"r/{subreddit_name} — Found {len(results)} new items | Skipped {skipped_due_to_age} due to age | {skipped_due_to_duplicate} duplicates | {skipped_due_to_rate_limit} due to rate limit issues")
     except Exception as e:
         log.error(f"Error fetching from r/{subreddit_name}: {str(e)}")
 
