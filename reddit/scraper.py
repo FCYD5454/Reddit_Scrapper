@@ -32,12 +32,10 @@ reddit = praw.Reddit(
 limiter = RedditRateLimiter(config["scraper"].get("rate_limit_per_minute", 60))
 EXPLORATORY_FILE = "data/exploratory_subreddits.json"
 
-
 def is_post_in_age_range(post, min_days, max_days) -> bool:
     post_date = datetime.datetime.fromtimestamp(post.created_utc)
     age_days = (datetime.datetime.utcnow() - post_date).days
     return min_days <= age_days <= max_days
-
 
 def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
     min_days = config["scraper"]["min_post_age_days"]
@@ -54,17 +52,20 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
         subreddit = reddit.subreddit(subreddit_name)
         combined = []
 
-        combined.extend(safe_fetch(subreddit.top(time_filter="month", limit=limit), "top"))
-        combined.extend(safe_fetch(subreddit.hot(limit=limit), "hot"))
-        combined.extend(safe_fetch(subreddit.new(limit=limit), "new"))
+        for fetch_name, fetch_method in [("top", subreddit.top(time_filter="month", limit=limit)),
+                                         ("hot", subreddit.hot(limit=limit)),
+                                         ("new", subreddit.new(limit=limit))]:
+            limiter.wait()  # Apply rate limit per API fetch
+            posts = safe_fetch(fetch_method, fetch_name)
+            combined.extend(posts)
 
         log.info(f"Total fetched posts to process from r/{subreddit_name}: {len(combined)}")
         start_time = time.time()
+
         for i, post in enumerate(combined):
             if i % 10 == 0:
                 log.info(f"Processing post #{i+1}/{len(combined)}")
-            limiter.wait()
-            log.info("Finished waiting for rate limit")
+
             if post.id in seen_ids:
                 continue
             seen_ids.add(post.id)
@@ -91,9 +92,9 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
 
             if include_comments:
                 try:
+                    limiter.wait()  # One API call to fetch all comments
                     post.comments.replace_more(limit=0)
                     for comment in post.comments.list():
-                        limiter.wait()
                         if comment.id in seen_ids:
                             continue
                         seen_ids.add(comment.id)
@@ -102,6 +103,7 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
                             continue
                         if is_already_processed(comment.id):
                             continue
+
                         results.append({
                             "id": comment.id,
                             "title": post.title,
@@ -114,13 +116,15 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
                 except Exception as e:
                     log.warning(f"Failed to fetch comments for post {post.id}: {str(e)}")
 
-        log.info(f"r/{subreddit_name} — Found {len(results)} new items | Skipped {skipped_due_to_age} due to age | {skipped_due_to_duplicate} duplicates")
+        log.info(
+            f"r/{subreddit_name} — Found {len(results)} new items | "
+            f"Skipped {skipped_due_to_age} due to age | {skipped_due_to_duplicate} duplicates"
+        )
     except Exception as e:
         log.error(f"Error fetching from r/{subreddit_name}: {str(e)}")
 
     log.info(f"Finished processing posts from r/{subreddit_name} in {time.time() - start_time:.2f} seconds")
     return results
-
 
 def get_exploratory_subreddits():
     if not os.path.exists(EXPLORATORY_FILE):
@@ -145,7 +149,6 @@ def update_exploratory_subreddits(new_subreddits):
     os.makedirs("data", exist_ok=True)
     save_json(data, EXPLORATORY_FILE)
     log.info(f"Updated exploratory subreddits: {', '.join(new_subreddits)}")
-
 
 def scrape_all_configured_subreddits() -> list:
     primary_subreddits = config["subreddits"]["primary"]
