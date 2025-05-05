@@ -1,6 +1,5 @@
 # gpt/insights.py
 
-import openai
 import os
 from typing import List, Dict
 from utils.helpers import estimate_tokens
@@ -19,7 +18,16 @@ def load_insight_prompt_template():
             return f.read()
     except Exception as e:
         log.error(f"Error loading insight prompt template: {str(e)}")
-        return "Extract:\n1. The core pain point\n2. Lead type\n3. 1–3 relevant marketing tags\n4. ROI weight (1–5)\n5. Justification\n\nRespond with JSON."
+        return (
+            "Extract:\n"
+            "1. The core pain point\n"
+            "2. Lead type\n"
+            "3. 1–3 relevant marketing tags\n"
+            "4. ROI weight (1–5)\n"
+            "5. Justification\n\n"
+            "Respond with JSON."
+        )
+
 
 INSIGHT_PROMPT_TEMPLATE = load_insight_prompt_template()
 
@@ -27,8 +35,14 @@ INSIGHT_PROMPT_TEMPLATE = load_insight_prompt_template()
 def build_insight_prompt(post: dict) -> List[Dict]:
     """Constructs the GPT-4.1 prompt for extracting deeper insights using template."""
     return [
-        {"role": "system", "content": "You are a SaaS strategist extracting pain points and marketing tags from Reddit posts."},
-        {"role": "user", "content": f"Post title: {post['title']}\nPost body: {post['body']}\n\n{INSIGHT_PROMPT_TEMPLATE}"}
+        {
+            "role": "system",
+            "content": "You are a SaaS strategist extracting pain points and marketing tags from Reddit posts."
+        },
+        {
+            "role": "user",
+            "content": f"Post title: {post['title']}\nPost body: {post['body']}\n\n{INSIGHT_PROMPT_TEMPLATE}"
+        }
     ]
 
 
@@ -41,7 +55,10 @@ def prepare_insight_batch(posts: List[dict]) -> List[Dict]:
             "id": post["id"],
             "messages": messages,
             "meta": {
-                "estimated_tokens": estimate_tokens(post.get("title", "") + post.get("body", ""), config["openai"].get("model_deep", "gpt-4.1"))
+                "estimated_tokens": estimate_tokens(
+                    post.get("title", "") + post.get("body", ""),
+                    config["openai"].get("model_deep", "gpt-4.1")
+                )
             }
         })
     return payload

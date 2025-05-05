@@ -1,6 +1,3 @@
-# gpt/filters.py
-
-import openai
 import os
 from typing import List, Dict
 from utils.helpers import estimate_tokens
@@ -19,7 +16,15 @@ def load_filter_prompt_template():
             return f.read()
     except Exception as e:
         log.error(f"Error loading filter prompt template: {str(e)}")
-        return "You are a marketing assistant scoring Reddit posts for product relevance.\n\nAnalyze:\n- Is the post about automation, cron jobs, scheduling tasks, or running scripts?\n- Does the user express frustration, confusion, or a need for a solution?\n- How emotionally charged is the post?\n\nRespond with JSON including relevance_score, emotional_intensity, pain_point_clarity, and summary."
+        return (
+            "You are a marketing assistant scoring Reddit posts for product relevance.\n\n"
+            "Analyze:\n"
+            "- Is the post about automation, cron jobs, scheduling tasks, or running scripts?\n"
+            "- Does the user express frustration, confusion, or a need for a solution?\n"
+            "- How emotionally charged is the post?\n\n"
+            "Respond with JSON including relevance_score, emotional_intensity, pain_point_clarity, and summary."
+        )
+
 
 FILTER_PROMPT_TEMPLATE = load_filter_prompt_template()
 
@@ -41,7 +46,10 @@ def prepare_batch_payload(posts: List[dict]) -> List[Dict]:
             "id": post["id"],
             "messages": messages,
             "meta": {
-                "estimated_tokens": estimate_tokens(post.get("title", "") + post.get("body", ""), config["openai"].get("model_filter", "gpt-4.1-mini"))
+                "estimated_tokens": estimate_tokens(
+                    post.get("title", "") + post.get("body", ""),
+                    config["openai"].get("model_filter", "gpt-4.1-mini")
+                )
             }
         })
     return payload
