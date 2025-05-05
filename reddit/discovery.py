@@ -1,14 +1,14 @@
 # reddit/discovery.py
-
-import openai
+from openai import OpenAI
 import json
-import os
 from config.config_loader import get_config
 from utils.logger import setup_logger
 
 log = setup_logger()
 config = get_config()
 PROMPT_PATH = "gpt/prompts/community_discovery.txt"
+
+client = OpenAI()  # <-- initialize new OpenAI client
 
 def load_discovery_prompt_template():
     """Load the community discovery prompt template from file."""
@@ -31,18 +31,18 @@ def build_discovery_prompt(top_post_summaries: list[str]) -> list:
         {"role": "user", "content": prompt_content}
     ]
 
-def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.1") -> list:
-    """Uses GPT-4.1 to suggest exploratory subreddits."""
+def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.0") -> list:
+    """Uses GPT-4.0 to suggest exploratory subreddits."""
     log.info(f"Running discovery with {len(summaries)} post summaries")
     prompt = build_discovery_prompt(summaries)
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=model,
             messages=prompt,
             temperature=0.3
         )
-        content = response['choices'][0]['message']['content']
+        content = response.choices[0].message.content
         log.debug(f"Discovery API response: {content[:200]}...")
 
         suggestions = json.loads(content)
@@ -50,10 +50,10 @@ def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.1") -> list:
             log.error("GPT response is not a list. Skipping.")
             return []
 
-        valid_suggestions = []
-        for item in suggestions:
-            if isinstance(item, dict) and "subreddit" in item:
-                valid_suggestions.append(item)
+        valid_suggestions = [
+            item for item in suggestions
+            if isinstance(item, dict) and "subreddit" in item
+        ]
 
         if not valid_suggestions:
             log.warning("No valid subreddit suggestions found in GPT response.")
