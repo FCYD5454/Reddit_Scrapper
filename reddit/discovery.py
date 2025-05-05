@@ -2,44 +2,68 @@
 
 import openai
 import json
+import os
 from config.config_loader import get_config
+from utils.logger import setup_logger
 
+log = setup_logger()
 config = get_config()
+PROMPT_PATH = "gpt/prompts/community_discovery.txt"
+
+def load_discovery_prompt_template():
+    """Load the community discovery prompt template from file."""
+    try:
+        with open(PROMPT_PATH, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        log.error(f"Error loading community discovery prompt template: {str(e)}")
+        return "Based on the following Reddit post summaries, suggest a ranked list of 12 relevant subreddits with pain points Cronlytic could solve. Respond in JSON format."
+
+DISCOVERY_PROMPT_TEMPLATE = load_discovery_prompt_template()
 
 def build_discovery_prompt(top_post_summaries: list[str]) -> list:
-    """Builds the GPT prompt for discovering adjacent subreddits."""
+    """Builds the GPT prompt for discovering adjacent subreddits using template."""
     joined = "\n".join(f"- {summary}" for summary in top_post_summaries)
+    prompt_content = DISCOVERY_PROMPT_TEMPLATE.replace("{SUMMARIES}", joined)
+
     return [
         {"role": "system", "content": "You are an expert in developer marketing and community discovery."},
-        {"role": "user", "content": f"""Based on the following Reddit post summaries, suggest a ranked list of 12 relevant subreddits that are likely to contain pain points Cronlytic could solve.
-
-Summaries:
-{joined}
-
-Respond in JSON format:
-[
-  {{
-    "subreddit": "example",
-    "reason": "...",
-    "pain_signal_pct": 70,
-    "solution_requests_pct": 40,
-    "engagement_level": "medium"
-  }},
-  ...
-]
-"""}]
+        {"role": "user", "content": prompt_content}
+    ]
 
 def discover_adjacent_subreddits(summaries: list[str], model="gpt-4.1") -> list:
     """Uses GPT-4.1 to suggest exploratory subreddits."""
+    log.info(f"Running discovery with {len(summaries)} post summaries")
     prompt = build_discovery_prompt(summaries)
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=prompt,
-        temperature=0.3
-    )
+
     try:
-        suggestions = json.loads(response['choices'][0]['message']['content'])
-        return suggestions[:config["subreddits"]["exploratory_limit"]]
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=prompt,
+            temperature=0.3
+        )
+        content = response['choices'][0]['message']['content']
+        log.debug(f"Discovery API response: {content[:200]}...")
+
+        suggestions = json.loads(content)
+        if not isinstance(suggestions, list):
+            log.error("GPT response is not a list. Skipping.")
+            return []
+
+        valid_suggestions = []
+        for item in suggestions:
+            if isinstance(item, dict) and "subreddit" in item:
+                valid_suggestions.append(item)
+
+        if not valid_suggestions:
+            log.warning("No valid subreddit suggestions found in GPT response.")
+            return []
+
+        return valid_suggestions[:config["subreddits"]["exploratory_limit"]]
+
+    except json.JSONDecodeError as je:
+        log.error(f"Failed to parse GPT discovery response as JSON: {str(je)}")
+        return []
     except Exception as e:
-        print(f"Error parsing GPT response: {e}")
+        log.error(f"Error in discovery process: {str(e)}")
         return []

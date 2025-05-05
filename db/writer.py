@@ -8,15 +8,15 @@ config = get_config()
 DB_PATH = config["database"]["path"]
 
 def insert_post(post: dict, community_type: str = "primary"):
-    """Insert a new Reddit post into the posts table."""
+    """Insert a new Reddit post or comment into the posts table."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     c.execute("""
     INSERT OR IGNORE INTO posts (
         id, url, title, body, subreddit, created_utc, last_active,
-        processed_at, community_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        processed_at, community_type, type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         post["id"],
         post["url"],
@@ -24,9 +24,10 @@ def insert_post(post: dict, community_type: str = "primary"):
         post.get("body", ""),
         post["subreddit"],
         post["created_utc"],
-        post["created_utc"],  # initialize last_active to created_utc
+        post["created_utc"],
         datetime.utcnow().isoformat(),
-        community_type
+        community_type,
+        post.get("type", "post")
     ))
 
     c.execute("""

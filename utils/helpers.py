@@ -1,32 +1,38 @@
 # utils/helpers.py
 
 import tiktoken
-import re
+import os
+import json
+from datetime import datetime, timedelta
 
-def estimate_tokens(text: str, model: str = "gpt-4.1") -> int:
-    """Roughly estimates the number of tokens in a text."""
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    return len(encoding.encode(text))
+def estimate_tokens(text: str) -> int:
+    """Estimate the number of tokens in a text string."""
+    encoding = tiktoken.get_encoding("cl100k_base")  # Default for gpt-4 models
+    tokens = encoding.encode(text)
+    return len(tokens)
 
-def clean_text(text: str) -> str:
-    """Removes extra whitespace, markdown, and control characters."""
-    text = re.sub(r"\s+", " ", text)
-    text = text.replace("\u200b", "")  # remove zero-width space
-    return text.strip()
+def ensure_directory_exists(path: str):
+    """Make sure a directory exists, creating it if needed."""
+    os.makedirs(path, exist_ok=True)
 
-def truncate(text: str, max_chars: int = 2000) -> str:
-    """Truncates text safely without cutting mid-word."""
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars].rsplit(" ", 1)[0] + "..."
+def save_json(data: dict, filename: str):
+    """Save dict as a JSON file."""
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
 
-def safe_json_parse(content: str):
-    """Safely loads a JSON string or returns {}."""
-    import json
-    try:
-        return json.loads(content)
-    except Exception:
+def load_json(filename: str) -> dict:
+    """Load JSON file as dict."""
+    if not os.path.exists(filename):
         return {}
+    with open(filename, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def format_datetime(dt=None):
+    """Format datetime with ISO format."""
+    if dt is None:
+        dt = datetime.utcnow()
+    return dt.isoformat()
+
+def days_ago(days: int) -> datetime:
+    """Return datetime object for N days ago."""
+    return datetime.utcnow() - timedelta(days=days)

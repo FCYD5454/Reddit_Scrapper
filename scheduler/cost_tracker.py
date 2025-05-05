@@ -1,36 +1,81 @@
 # scheduler/cost_tracker.py
 
-import os
 import json
+import os
 from datetime import datetime
 from config.config_loader import get_config
+from utils.logger import setup_logger
+from utils.helpers import save_json, load_json, ensure_directory_exists
 
+log = setup_logger()
 config = get_config()
-BUDGET_FILE = "data/openai_cost.json"
 
-def load_cost_data():
-    if not os.path.exists(BUDGET_FILE):
-        return {"month": current_month(), "total_cost": 0.0}
-    with open(BUDGET_FILE, "r") as f:
-        return json.load(f)
+# Constants for pricing (adjust if OpenAI changes their pricing)
+GPT4_MINI_INPUT_COST = 0.15  # $ per 1000 tokens
+GPT4_MINI_OUTPUT_COST = 0.60
+GPT4_INPUT_COST = 0.30
+GPT4_OUTPUT_COST = 0.60
 
-def save_cost_data(data):
-    with open(BUDGET_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+COST_TRACKING_FILE = "data/cost_tracking.json"
 
-def current_month():
-    return datetime.utcnow().strftime("%Y-%m")
+def initialize_cost_tracking():
+    """Initialize the cost tracking file if it doesn't exist."""
+    ensure_directory_exists("data")
+    if not os.path.exists(COST_TRACKING_FILE):
+        data = {
+            "monthly_costs": {},
+            "current_month": datetime.utcnow().strftime("%Y-%m"),
+            "current_month_total": 0.0,
+            "monthly_budget": config["openai"]["monthly_budget_usd"]
+        }
+        save_json(data, COST_TRACKING_FILE)
+        log.info("Cost tracking initialized.")
+    return load_json(COST_TRACKING_FILE)
 
-def add_cost(amount_usd: float):
-    data = load_cost_data()
-    if data["month"] != current_month():
-        data = {"month": current_month(), "total_cost": 0.0}
-    data["total_cost"] += amount_usd
-    save_cost_data(data)
+def track_api_usage(input_tokens, output_tokens, model):
+    """Track API usage and calculate costs."""
+    tracking_data = load_json(COST_TRACKING_FILE)
+    current_month = datetime.utcnow().strftime("%Y-%m")
 
-def get_remaining_budget():
-    data = load_cost_data()
-    return max(0, config["openai"]["monthly_budget_usd"] - data["total_cost"])
+    if tracking_data["current_month"] != current_month:
+        tracking_data["current_month"] = current_month
+        tracking_data["current_month_total"] = 0.0
 
-def is_over_budget() -> bool:
-    return get_remaining_budget() <= 0
+    if "mini" in model.lower():
+        input_cost = (input_tokens / 1000) * GPT4_MINI_INPUT_COST
+        output_cost = (output_tokens / 1000) * GPT4_MINI_OUTPUT_COST
+    else:
+        input_cost = (input_tokens / 1000) * GPT4_INPUT_COST
+        output_cost = (output_tokens / 1000) * GPT4_OUTPUT_COST
+
+    total_cost = input_cost + output_cost
+
+    tracking_data["monthly_costs"].setdefault(current_month, 0.0)
+    tracking_data["monthly_costs"][current_month] += total_cost
+    tracking_data["current_month_total"] += total_cost
+
+    save_json(tracking_data, COST_TRACKING_FILE)
+    log.info(f"Tracked usage: {input_tokens} input + {output_tokens} output tokens. Cost: ${total_cost:.4f}")
+
+    return total_cost
+
+def remaining_budget():
+    """Calculate remaining budget for the current month."""
+    tracking_data = load_json(COST_TRACKING_FILE)
+    current_month = datetime.utcnow().strftime("%Y-%m")
+
+    if tracking_data["current_month"] != current_month:
+        tracking_data["current_month"] = current_month
+        tracking_data["current_month_total"] = 0.0
+        save_json(tracking_data, COST_TRACKING_FILE)
+
+    budget = tracking_data.get("monthly_budget", config["openai"]["monthly_budget_usd"])
+    spent = tracking_data.get("current_month_total", 0.0)
+    return max(0.0, budget - spent)
+
+def can_process_batch(estimated_cost):
+    """Determine if a batch can be processed within budget."""
+    remaining = remaining_budget()
+    if estimated_cost > remaining:
+        log.warning(f"Budget limit reached. Estimated cost ${estimated_cost:.2f}, remaining ${remaining:.2f}")
+    return estimated_cost <= remaining
