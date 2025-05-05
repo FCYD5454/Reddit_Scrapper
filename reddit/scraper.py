@@ -19,7 +19,9 @@ config = get_config()
 reddit = praw.Reddit(
     client_id=config["reddit"]["client_id"],
     client_secret=config["reddit"]["client_secret"],
-    user_agent=config["reddit"]["user_agent"]
+    user_agent=config["reddit"]["user_agent"],
+    username=config["reddit"]["username"],
+    password=config["reddit"]["password"]
 )
 
 limiter = RedditRateLimiter(config["scraper"].get("rate_limit_per_minute", 60))

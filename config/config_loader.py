@@ -1,5 +1,3 @@
-# config/config_loader.py
-
 import yaml
 import os
 from dotenv import load_dotenv
@@ -17,6 +15,8 @@ def get_config():
         "client_id": os.getenv("REDDIT_CLIENT_ID"),
         "client_secret": os.getenv("REDDIT_CLIENT_SECRET"),
         "user_agent": os.getenv("REDDIT_USER_AGENT"),
+        "username": os.getenv("REDDIT_USERNAME"),      # Added
+        "password": os.getenv("REDDIT_PASSWORD"),      # Added
     }
 
     raw_config["openai"]["api_key"] = os.getenv("OPENAI_API_KEY")
