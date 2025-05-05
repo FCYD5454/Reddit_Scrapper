@@ -104,7 +104,7 @@ def run_daily_pipeline():
                 for line in f:
                     result = json.loads(line)
                     post_id = result["custom_id"]
-                    content = result["response"]["choices"][0]["message"]["content"]
+                    content = result["response"]["body"]["choices"][0]["message"]["content"]
 
                     try:
                         scores = json.loads(content)
@@ -164,7 +164,7 @@ def run_daily_pipeline():
             for line in f:
                 result = json.loads(line)
                 post_id = result["custom_id"]
-                content = result["response"]["choices"][0]["message"]["content"]
+                content = result["response"]["body"]["choices"][0]["message"]["content"]
 
                 try:
                     insight = json.loads(content)

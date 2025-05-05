@@ -44,7 +44,7 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
     batch = openai.batches.create(
         input_file_id=uploaded_file.id,
         endpoint=endpoint,
-        completion_window="24h",
+        completion_window="1h",
     )
     log.info(f"Submitted batch job: {batch.id}")
     return batch.id
