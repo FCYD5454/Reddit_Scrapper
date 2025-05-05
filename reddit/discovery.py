@@ -8,7 +8,7 @@ log = setup_logger()
 config = get_config()
 PROMPT_PATH = "gpt/prompts/community_discovery.txt"
 
-client = OpenAI()  # <-- initialize new OpenAI client
+client = OpenAI()
 
 def load_discovery_prompt_template():
     """Load the community discovery prompt template from file."""
@@ -17,7 +17,10 @@ def load_discovery_prompt_template():
             return f.read()
     except Exception as e:
         log.error(f"Error loading community discovery prompt template: {str(e)}")
-        return "Based on the following Reddit post summaries, suggest a ranked list of 12 relevant subreddits with pain points Cronlytic could solve. Respond in JSON format."
+        return (
+            "Based on the following Reddit post summaries, suggest a ranked list of 12 relevant subreddits "
+            "with pain points Cronlytic could solve. Respond in JSON format."
+        )
 
 DISCOVERY_PROMPT_TEMPLATE = load_discovery_prompt_template()
 
@@ -57,11 +60,15 @@ def discover_adjacent_subreddits(summaries: list[str], model: str = None) -> lis
             if isinstance(item, dict) and "subreddit" in item
         ]
 
-        if not valid_suggestions:
-            log.warning("No valid subreddit suggestions found in GPT response.")
+        # Remove already-known subreddits
+        primary_set = {sub.lower() for sub in config["subreddits"]["primary"]}
+        filtered = [s for s in valid_suggestions if s["subreddit"].lower() not in primary_set]
+
+        if not filtered:
+            log.warning("No valid *new* subreddit suggestions found in GPT response.")
             return []
 
-        return valid_suggestions[:config["subreddits"]["exploratory_limit"]]
+        return filtered[:config["subreddits"]["exploratory_limit"]]
 
     except json.JSONDecodeError as je:
         log.error(f"Failed to parse GPT discovery response as JSON: {str(je)}")
@@ -69,4 +76,3 @@ def discover_adjacent_subreddits(summaries: list[str], model: str = None) -> lis
     except Exception as e:
         log.error(f"Error in discovery process: {str(e)}")
         return []
-

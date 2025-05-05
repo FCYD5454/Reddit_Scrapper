@@ -2,8 +2,8 @@
 
 import time
 from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
+from scheduler.schedulers.background import BackgroundScheduler
+from scheduler.triggers.cron import CronTrigger
 from scheduler.runner import run_daily_pipeline
 from utils.logger import setup_logger
 

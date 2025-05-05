@@ -3,15 +3,27 @@
 import tiktoken
 import os
 import json
+import tiktoken
 from datetime import datetime, timedelta, timezone
+
+from config.config_loader import get_config
+from utils.logger import setup_logger
+
+# Setup logger and config
+log = setup_logger()
+config = get_config()
 
 # Default tokenizer for GPT-4, GPT-3.5
 DEFAULT_ENCODING = "cl100k_base"
 ENCODER = tiktoken.get_encoding(DEFAULT_ENCODING)
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str, model: str = None) -> int:
     """Estimate number of tokens in a text string using GPT-4 tokenizer."""
-    return len(ENCODER.encode(text or ""))
+    try:
+        return len(ENCODER.encode(text or ""))
+    except Exception as e:
+        log.error(f"Token estimation failed: {e}")
+        return config["openai"].get("max_tokens_per_post", 1000)
 
 def ensure_directory_exists(path: str):
     """Ensure the directory exists."""
