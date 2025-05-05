@@ -34,22 +34,40 @@ def is_post_in_age_range(post, min_days, max_days) -> bool:
     return min_days <= age_days <= max_days
 
 
-def fetch_posts_from_subreddit(subreddit_name, limit=50) -> list:
+def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
     min_days = config["scraper"]["min_post_age_days"]
     max_days = config["scraper"]["max_post_age_days"]
     include_comments = config["scraper"].get("include_comments", False)
     results = []
+    seen_ids = set()
+
+    skipped_due_to_age = 0
+    skipped_due_to_duplicate = 0
 
     try:
-        log.info(f"Fetching posts from r/{subreddit_name}...")
+        log.info(f"Fetching posts from r/{subreddit_name} using top, hot, and new...")
         subreddit = reddit.subreddit(subreddit_name)
+        combined = []
 
-        for post in subreddit.new(limit=limit):
+        combined.extend(subreddit.top(time_filter="month", limit=limit))
+        combined.extend(subreddit.hot(limit=limit))
+        combined.extend(subreddit.new(limit=limit))
+
+        for post in combined:
             limiter.wait()
 
+            if post.id in seen_ids:
+                continue
+            seen_ids.add(post.id)
+
+            created_at = datetime.datetime.fromtimestamp(post.created_utc)
+            log.debug(f"Post {post.id} at {created_at.isoformat()} — {post.title[:60]}")
+
             if not is_post_in_age_range(post, min_days, max_days):
+                skipped_due_to_age += 1
                 continue
             if is_already_processed(post.id):
+                skipped_due_to_duplicate += 1
                 continue
 
             results.append({
@@ -63,24 +81,31 @@ def fetch_posts_from_subreddit(subreddit_name, limit=50) -> list:
             })
 
             if include_comments:
-                post.comments.replace_more(limit=0)
-                for comment in post.comments.list():
-                    limiter.wait()
-                    if not is_post_in_age_range(comment, min_days, max_days):
-                        continue
-                    if is_already_processed(comment.id):
-                        continue
-                    results.append({
-                        "id": comment.id,
-                        "title": post.title,
-                        "body": comment.body,
-                        "created_utc": comment.created_utc,
-                        "subreddit": subreddit_name,
-                        "url": f"https://www.reddit.com{comment.permalink}",
-                        "type": "comment"
-                    })
+                try:
+                    post.comments.replace_more(limit=0)
+                    for comment in post.comments.list():
+                        limiter.wait()
+                        if comment.id in seen_ids:
+                            continue
+                        seen_ids.add(comment.id)
 
-        log.info(f"Found {len(results)} new items from r/{subreddit_name}")
+                        if not is_post_in_age_range(comment, min_days, max_days):
+                            continue
+                        if is_already_processed(comment.id):
+                            continue
+                        results.append({
+                            "id": comment.id,
+                            "title": post.title,
+                            "body": comment.body,
+                            "created_utc": comment.created_utc,
+                            "subreddit": subreddit_name,
+                            "url": f"https://www.reddit.com{comment.permalink}",
+                            "type": "comment"
+                        })
+                except Exception as e:
+                    log.warning(f"Failed to fetch comments for post {post.id}: {str(e)}")
+
+        log.info(f"r/{subreddit_name} — Found {len(results)} new items | Skipped {skipped_due_to_age} due to age | {skipped_due_to_duplicate} duplicates")
     except Exception as e:
         log.error(f"Error fetching from r/{subreddit_name}: {str(e)}")
 
