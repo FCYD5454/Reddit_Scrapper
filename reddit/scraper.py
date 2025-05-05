@@ -64,7 +64,7 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
             if i % 10 == 0:
                 log.info(f"Processing post #{i+1}/{len(combined)}")
             limiter.wait()
-
+            log.info("Finished waiting for rate limit")
             if post.id in seen_ids:
                 continue
             seen_ids.add(post.id)
