@@ -82,6 +82,7 @@ def add_estimated_batch_cost(requests: list[dict], model: str):
     pricing = {
         "gpt-4.1": {"input": 0.0020, "output": 0.0080},
         "gpt-4.1-mini": {"input": 0.0004, "output": 0.0016},
+        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
     }
 
     discount_factor = 0.5  # 50% discount for batch jobs
@@ -92,8 +93,8 @@ def add_estimated_batch_cost(requests: list[dict], model: str):
     input_tokens = sum(req.get("meta", {}).get("estimated_tokens", 300) for req in requests)
     output_tokens = len(requests) * 300  # Assumes ~300 output tokens per completion
 
-    input_cost = (input_tokens / 1_000_000) * model_pricing["input"] * discount_factor
-    output_cost = (output_tokens / 1_000_000) * model_pricing["output"] * discount_factor
+    input_cost = (input_tokens / 200_000) * model_pricing["input"] * discount_factor
+    output_cost = (output_tokens / 500_000) * model_pricing["output"] * discount_factor
     estimated_cost = input_cost + output_cost
 
     log.info(f"Estimated cost for batch (input + output): ${estimated_cost:.4f}")

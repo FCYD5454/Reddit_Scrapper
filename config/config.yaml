@@ -26,7 +26,7 @@ scraper:
 
 # OpenAI settings
 openai:
-  model_filter: gpt-4.1-mini        # For pre-filtering stage
+  model_filter: gpt-4o-mini        # For pre-filtering stage
   model_deep: gpt-4.1               # For insight extraction
   use_batch_api: true
   monthly_budget_usd: 100           # Cost cap for safety
