@@ -1,4 +1,4 @@
-# Cronlytic Reddit Scraper
+# Reddit Scraper
 
 A Python application that scrapes Reddit for potential marketing leads, analyzes them with GPT models, and identifies high-value opportunities for a cron job scheduling SaaS.
 
