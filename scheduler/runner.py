@@ -21,7 +21,7 @@ log = setup_logger()
 config = get_config()
 
 
-def split_batch_by_token_limit(payload, model: str, token_limit: int = 500_000):
+def split_batch_by_token_limit(payload, model: str, token_limit: int = 200_000):
     batches = []
     current_batch = []
     current_tokens = 0
