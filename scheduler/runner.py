@@ -197,7 +197,7 @@ def run_daily_pipeline():
             log.error(f"Error in insight batch: {str(e)}")
             continue
 
-    log.info("Step 6: Updating posts with deep insights...")
+    log.info("Step 5: Updating posts with deep insights...")
     try:
         for insight_path in all_insight_paths:
             with open(insight_path, "r", encoding="utf-8") as f:

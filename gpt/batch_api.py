@@ -50,35 +50,42 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
     return batch.id
 
 def poll_batch_status(batch_id: str, timeout_seconds: int = 10800) -> dict:
-    """Polls batch status every 60s until it's completed, failed, or cancelled after timeout."""
-    start_time = time.time()
+    """Polls batch status every 60s. Cancels if no progress in `timeout_seconds`. Waits for confirmed cancellation."""
+    previous_completed = 0
+    last_progress_time = time.time()
 
     while True:
         batch = openai.batches.retrieve(batch_id)
         status = batch.status
-        log.info(f"Batch {batch_id} status: {status}")
+        request_counts = batch.request_counts
+        completed = request_counts.get('completed', 0)
+        total = request_counts.get('total', 0)
+
+        log.info(f"Batch {batch_id} status: {status} — {completed}/{total} completed")
 
         if status in {"completed", "failed", "expired"}:
             return {"status": status, "batch": batch}
 
-        # Cancel if running too long
-        elapsed = time.time() - start_time
-        if elapsed > timeout_seconds:
-            log.warning(f"Batch {batch_id} exceeded max wait time ({timeout_seconds}s). Attempting to cancel...")
+        # Reset timeout if there's progress
+        if completed > previous_completed:
+            last_progress_time = time.time()
+            previous_completed = completed
+
+        # Cancel if no progress for too long
+        if time.time() - last_progress_time > timeout_seconds:
+            log.warning(f"No progress in last {timeout_seconds // 60} mins. Cancelling batch {batch_id}...")
             try:
                 openai.batches.cancel(batch_id)
             except Exception as e:
                 log.error(f"Error cancelling batch {batch_id}: {e}")
 
-            # Wait until it's confirmed cancelled
+            # Wait for cancellation to be confirmed
             while True:
                 batch = openai.batches.retrieve(batch_id)
                 log.info(f"Waiting for cancellation... Current status: {batch.status}")
                 if batch.status in {"cancelled", "failed", "expired"}:
-                    break
+                    return {"status": "cancelled", "batch": batch}
                 time.sleep(60)
-
-            return {"status": "cancelled", "batch": batch}
 
         time.sleep(60)
 
