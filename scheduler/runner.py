@@ -82,9 +82,17 @@ def run_daily_pipeline():
         try:
             batch_id = submit_batch_job(filter_file)
             log.info(f"Batch job submitted with ID: {batch_id}")
-            batch_result = poll_batch_status(batch_id)
-            if batch_result.status != "completed":
-                log.error(f"Batch job failed with status: {batch_result.status}")
+            batch_result_info = poll_batch_status(batch_id)
+            status = batch_result_info["status"]
+
+            if status == "cancelled":
+                log.warning(f"Batch {batch_id} was cancelled due to timeout. Resubmitting batch...")
+                batch_id = submit_batch_job(filter_file)
+                batch_result_info = poll_batch_status(batch_id)
+                status = batch_result_info["status"]
+
+            if status != "completed":
+                log.error(f"Batch job failed with status: {status}")
                 continue
 
             result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
@@ -147,9 +155,17 @@ def run_daily_pipeline():
     try:
         insight_batch_id = submit_batch_job(insight_file)
         log.info(f"Insight batch job submitted with ID: {insight_batch_id}")
-        insight_result = poll_batch_status(insight_batch_id)
-        if insight_result.status != "completed":
-            log.error(f"Insight batch job failed with status: {insight_result.status}")
+        insight_result_info = poll_batch_status(insight_batch_id)
+        status = insight_result_info["status"]
+
+        if status == "cancelled":
+            log.warning(f"Insight batch {insight_batch_id} was cancelled due to timeout. Resubmitting...")
+            insight_batch_id = submit_batch_job(insight_file)
+            insight_result_info = poll_batch_status(insight_batch_id)
+            status = insight_result_info["status"]
+
+        if status != "completed":
+            log.error(f"Insight batch job failed with status: {status}")
             return
 
         insight_path = f"data/batch_responses/insight_result_{uuid.uuid4().hex}.jsonl"

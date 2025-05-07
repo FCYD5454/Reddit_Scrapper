@@ -49,14 +49,38 @@ def submit_batch_job(file_path: str, endpoint: str = "/v1/chat/completions") -> 
     log.info(f"Submitted batch job: {batch.id}")
     return batch.id
 
-def poll_batch_status(batch_id: str):
-    """Polls batch status every 15s until it's complete or failed."""
+def poll_batch_status(batch_id: str, timeout_seconds: int = 10800) -> dict:
+    """Polls batch status every 60s until it's completed, failed, or cancelled after timeout."""
+    start_time = time.time()
+
     while True:
         batch = openai.batches.retrieve(batch_id)
-        log.info(f"Batch {batch_id} status: {batch.status}")
-        if batch.status in {"completed", "failed", "expired"}:
-            return batch
-        time.sleep(15)
+        status = batch.status
+        log.info(f"Batch {batch_id} status: {status}")
+
+        if status in {"completed", "failed", "expired"}:
+            return {"status": status, "batch": batch}
+
+        # Cancel if running too long
+        elapsed = time.time() - start_time
+        if elapsed > timeout_seconds:
+            log.warning(f"Batch {batch_id} exceeded max wait time ({timeout_seconds}s). Attempting to cancel...")
+            try:
+                openai.batches.cancel(batch_id)
+            except Exception as e:
+                log.error(f"Error cancelling batch {batch_id}: {e}")
+
+            # Wait until it's confirmed cancelled
+            while True:
+                batch = openai.batches.retrieve(batch_id)
+                log.info(f"Waiting for cancellation... Current status: {batch.status}")
+                if batch.status in {"cancelled", "failed", "expired"}:
+                    break
+                time.sleep(60)
+
+            return {"status": "cancelled", "batch": batch}
+
+        time.sleep(60)
 
 def download_batch_results(batch_id: str, save_path: str):
     """Downloads and stores the results of a completed batch job."""
