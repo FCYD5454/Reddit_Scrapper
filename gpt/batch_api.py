@@ -58,8 +58,8 @@ def poll_batch_status(batch_id: str, timeout_seconds: int = 10800) -> dict:
         batch = openai.batches.retrieve(batch_id)
         status = batch.status
         request_counts = batch.request_counts
-        completed = request_counts.get('completed', 0)
-        total = request_counts.get('total', 0)
+        completed = getattr(request_counts, "completed", 0)
+        total = getattr(request_counts, "total", 0)
 
         log.info(f"Batch {batch_id} status: {status} — {completed}/{total} completed")
 
@@ -79,7 +79,7 @@ def poll_batch_status(batch_id: str, timeout_seconds: int = 10800) -> dict:
             except Exception as e:
                 log.error(f"Error cancelling batch {batch_id}: {e}")
 
-            # Wait for cancellation to be confirmed
+            # Wait for cancellation confirmation
             while True:
                 batch = openai.batches.retrieve(batch_id)
                 log.info(f"Waiting for cancellation... Current status: {batch.status}")
