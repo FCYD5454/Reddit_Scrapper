@@ -35,7 +35,8 @@ def create_tables():
         tags TEXT,
         roi_weight INTEGER,
         community_type TEXT,
-        type TEXT  -- 'post' or 'comment'
+        type TEXT,  -- 'post' or 'comment'
+        insight_processed INTEGER DEFAULT 0
     );
     """)
 

@@ -1,7 +1,7 @@
 # db/reader.py
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, UTC
 from config.config_loader import get_config
 from pathlib import Path
 
@@ -31,7 +31,7 @@ def is_already_processed(post_id: str) -> bool:
         return False
 
 def get_top_posts_for_today(limit=10) -> list:
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.now(UTC).date().isoformat()
     conn = _get_connection()
     rows = conn.execute("""
         SELECT * FROM posts
@@ -49,3 +49,37 @@ def get_all_posts_by_tag(tag: str) -> list:
         ORDER BY processed_at DESC
     """, (f"%{tag}%",)).fetchall()
     return [dict(row) for row in rows]
+
+def get_posts_by_ids(post_ids: set, require_unprocessed: bool = False) -> list:
+    """Retrieve full post records for a set of IDs, optionally skipping already-insighted ones."""
+    if not post_ids:
+        return []
+
+    conn = _get_connection()
+    placeholders = ",".join("?" for _ in post_ids)
+    query = f"SELECT * FROM posts WHERE id IN ({placeholders})"
+    if require_unprocessed:
+        query += " AND (insight_processed IS NULL OR insight_processed = 0)"
+
+    try:
+        rows = conn.execute(query, tuple(post_ids)).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.Error as e:
+        print(f"[SQLite get_posts_by_ids Error] {e}")
+        return []
+
+def get_top_insights_from_today(limit=10) -> list:
+    """Return top posts from today that have been processed for deep insight."""
+    today = datetime.now(UTC).date().isoformat()
+    conn = _get_connection()
+    try:
+        rows = conn.execute("""
+            SELECT * FROM posts
+            WHERE processed_at >= ? AND insight_processed = 1
+            ORDER BY roi_weight DESC, relevance_score DESC
+            LIMIT ?
+        """, (today, limit)).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.Error as e:
+        print(f"[SQLite get_top_insights_from_today Error] {e}")
+        return []

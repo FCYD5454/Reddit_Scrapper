@@ -35,3 +35,5 @@ data/batch_responses/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+temp/

@@ -19,7 +19,7 @@ subreddits:
 # Reddit scraping settings
 scraper:
   min_post_age_days: 5              # Post must be at least 5 days old
-  max_post_age_days: 10             # Ignore posts older than 3 months
+  max_post_age_days: 7             # Ignore posts older than 3 months
   max_items_per_day: 300            # Total posts/comments scraped per run
   include_comments: true
   rate_limit_per_minute: 60         # Reddit API rate limit
@@ -49,3 +49,6 @@ database:
 # Logging & output
 log_level: DEBUG                   # For debug & reuse
 save_batch_payloads: true           # For debug & reuse
+
+cleanup:
+  batch_response_retention_days: 3 # Cleanup batch responses older than this

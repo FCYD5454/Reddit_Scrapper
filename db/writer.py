@@ -77,3 +77,15 @@ def update_post_insight(post_id: str, insight: dict):
         conn.commit()
     except sqlite3.Error as e:
         print(f"[SQLite Update Error] {e}")
+
+def mark_insight_processed(post_id: str):
+    """Mark a post as having been processed for deep insight."""
+    conn = _get_connection()
+    try:
+        conn.execute("""
+        UPDATE posts SET insight_processed = 1
+        WHERE id = ?
+        """, (post_id,))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"[SQLite mark_insight_processed Error] {e}")
