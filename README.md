@@ -1,5 +1,7 @@
-# Reddit Scraper
+[![Visit Cronlytic](https://img.shields.io/badge/Cronlytic.com-Explore%20Serverless%20Scheduling-blue)](https://www.cronlytic.com)
 
+> Built to uncover hidden marketing signals on Reddit — and help power smarter growth for Cronlytic.com 🚀
+# Reddit Scraper
 A Python application that scrapes Reddit for potential marketing leads, analyzes them with GPT models, and identifies high-value opportunities for a cron job scheduling SaaS.
 
 ## 📋 Overview
@@ -157,7 +159,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 | ----------------------------------------- | ------ | ----------------------------------------------------- |
 | **Reddit Scraping (Posts & Comments)**    | ✅ Done | Age-filtered, deduplicated, tracked via history table |
 | **Primary & Exploratory Subreddit Logic** | ✅ Done | With refreshable `exploratory_subreddits.json`        |
-| **GPT-4.1 Mini Filtering**                | ✅ Done | Via batch API, scoring + threshold-based selection    |
+| **GPT-4o Mini Filtering**                 | ✅ Done | Via batch API, scoring + threshold-based selection    |
 | **GPT-4.1 Insight Extraction**            | ✅ Done | With batch API, structured JSON, ROI + tags           |
 | **SQLite Local DB Storage**               | ✅ Done | Full schema, type handling (`post`/`comment`)         |
 | **Rate Limiting**                         | ✅ Done | Real limiter applied to avoid Reddit bans             |
@@ -176,3 +178,32 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 | **Multi-language / non-English handling** | 🟡 Not supported           | Detect & skip or flag for English-only use   |
 | **Unit tests / mocks**                    | 🟡 Not present             | Add test coverage for scoring and DB logic   |
 | **Dashboard/UI**                          | ❌ Out of scope (by design) | CLI / SQLite interface is sufficient for now |
+
+## 🙋‍♂️ Why This Exists
+
+This tool was created as part of the growth strategy for [**Cronlytic.com**](https://www.cronlytic.com) — a serverless cron job scheduler designed for developers, indie hackers, and SaaS teams.
+
+If you're building something and want to:
+- Run scheduled webhooks or background jobs
+- Get reliable cron-like execution in the cloud
+- Avoid over-engineering with full servers
+
+👉 [**Check out Cronlytic**](https://www.cronlytic.com) — and let us know what you'd love to see.
+
+## 📝 License
+
+This project is open source for personal and non-commercial use only.
+Commercial use (including hosting it as a backend or integrating into products) requires prior approval.
+
+See the [LICENSE](LICENSE) file for full terms.
+
+## 📄 Third-Party Licenses
+
+This project uses open source libraries, which are governed by their own licenses:
+
+- [PRAW](https://github.com/praw-dev/praw) — MIT License
+- [APScheduler](https://github.com/agronholm/apscheduler) — MIT License
+- [OpenAI Python SDK](https://github.com/openai/openai-python) — MIT License
+- [Reddit API](https://www.reddit.com/dev/api/) — Subject to Reddit’s [Terms of Service](https://www.redditinc.com/policies/data-api-terms)
+
+Use of this project must also comply with these third-party licenses and terms.
