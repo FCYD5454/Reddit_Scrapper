@@ -73,7 +73,7 @@ Configure the application by editing `config/config.yaml`. Key settings include:
 To run the pipeline once:
 
 ```
-python main.py
+python3 main.py
 ```
 
 This will:
@@ -84,10 +84,10 @@ This will:
 
 ### Scheduled Operation
 
-To run the pipeline daily at the configured time:
+To run the pipeline daily at the configured time (TODO, Fix scheduler):
 
 ```
-python scheduler/daily_scheduler.py
+python3 scheduler/daily_scheduler.py
 ```
 
 ## 📊 Results
