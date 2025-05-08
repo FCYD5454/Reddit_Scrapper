@@ -1,7 +1,6 @@
-# db/writer.py
 import sqlite3
 from config.config_loader import get_config
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 config = get_config()
@@ -19,7 +18,6 @@ def _get_connection():
     return _conn
 
 def insert_post(post: dict, community_type: str = "primary"):
-    """Insert a new Reddit post or comment into the posts table."""
     conn = _get_connection()
     try:
         conn.execute("""
@@ -35,7 +33,7 @@ def insert_post(post: dict, community_type: str = "primary"):
             post["subreddit"],
             post["created_utc"],
             post["created_utc"],
-            datetime.utcnow().isoformat(),
+            datetime.now(UTC).date().isoformat(),
             community_type,
             post.get("type", "post")
         ))
@@ -52,8 +50,8 @@ def insert_post(post: dict, community_type: str = "primary"):
     except sqlite3.Error as e:
         print(f"[SQLite Insert Error] {e}")
 
-def update_post_insight(post_id: str, insight: dict):
-    """Update an existing post with scoring/insight results."""
+def update_post_filter_scores(post_id: str, scores: dict):
+    """Update filtering phase scores only (relevance, emotion, pain)."""
     conn = _get_connection()
     try:
         conn.execute("""
@@ -61,22 +59,49 @@ def update_post_insight(post_id: str, insight: dict):
             relevance_score = ?,
             emotion_score = ?,
             pain_score = ?,
-            lead_type = ?,
-            tags = ?,
-            roi_weight = ?
+            processed_at = ?
         WHERE id = ?
         """, (
-            insight.get("relevance_score"),
-            insight.get("emotional_intensity"),
-            insight.get("pain_point_clarity"),
-            insight.get("lead_type"),
-            ", ".join(insight.get("tags", [])),
-            insight.get("roi_weight"),
+            scores.get("relevance_score"),
+            scores.get("emotional_intensity"),
+            scores.get("pain_point_clarity"),
+            datetime.now(UTC).date().isoformat(),
             post_id
         ))
         conn.commit()
     except sqlite3.Error as e:
-        print(f"[SQLite Update Error] {e}")
+        print(f"[SQLite update_post_filter_scores Error] {e}")
+
+def update_post_insight(post_id: str, insight: dict):
+    """Update deeper insights (lead_type, tags, roi_weight). Safe from overwriting with nulls."""
+    conn = _get_connection()
+    cursor = conn.cursor()
+
+    fields = {
+        "lead_type": insight.get("lead_type"),
+        "tags": ", ".join(insight["tags"]) if "tags" in insight else None,
+        "roi_weight": insight.get("roi_weight")
+    }
+
+    updates = [f"{key} = ?" for key, value in fields.items() if value is not None]
+    values = [value for value in fields.values() if value is not None]
+
+    if not updates:
+        return  # No valid fields to update
+
+    updates.append("insight_processed = 1")
+    updates.append("insight_processed_at = ?")
+    values.append(datetime.utcnow().isoformat())
+
+    query = f"""
+        UPDATE posts SET {', '.join(updates)}
+        WHERE id = ?
+    """
+    try:
+        cursor.execute(query, values + [post_id])
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"[SQLite update_post_insight Error] {e}")
 
 def mark_insight_processed(post_id: str):
     """Mark a post as having been processed for deep insight."""

@@ -7,7 +7,7 @@ import glob
 from datetime import datetime
 import time
 from reddit.scraper import scrape_all_configured_subreddits
-from db.writer import insert_post, update_post_insight, mark_insight_processed
+from db.writer import insert_post, update_post_filter_scores, update_post_insight, mark_insight_processed
 from db.reader import get_top_insights_from_today, get_posts_by_ids
 from db.schema import create_tables
 from gpt.filters import prepare_batch_payload as prepare_filter_batch, estimate_batch_cost as estimate_filter_cost
@@ -79,7 +79,7 @@ def get_high_potential_ids_from_filter_results(score_threshold=7.0):
                     )
                     if weighted_score >= score_threshold:
                         high_ids.add(post_id)
-                        update_post_insight(post_id, scores)
+                        update_post_filter_scores(post_id, scores)
                 except Exception as e:
                     log.error(f"Error parsing filter result line: {e}")
     return high_ids

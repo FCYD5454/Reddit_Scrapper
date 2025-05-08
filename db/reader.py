@@ -69,13 +69,12 @@ def get_posts_by_ids(post_ids: set, require_unprocessed: bool = False) -> list:
         return []
 
 def get_top_insights_from_today(limit=10) -> list:
-    """Return top posts from today that have been processed for deep insight."""
     today = datetime.now(UTC).date().isoformat()
     conn = _get_connection()
     try:
         rows = conn.execute("""
             SELECT * FROM posts
-            WHERE processed_at >= ? AND insight_processed = 1
+            WHERE date(processed_at) = ? AND insight_processed = 1
             ORDER BY roi_weight DESC, relevance_score DESC
             LIMIT ?
         """, (today, limit)).fetchall()
