@@ -33,7 +33,7 @@ The application maintains a balance between focused (90%) and exploratory (10%) 
 
 2. Create a virtual environment:
    ```
-   python -m venv .venv
+   python3 -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
 
