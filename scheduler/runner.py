@@ -127,6 +127,14 @@ def run_daily_pipeline():
             batch_result_info = poll_batch_status(batch_id)
             status = batch_result_info["status"]
 
+            retry_count = 0
+            while status == "failed" and retry_count < 3:
+                retry_count += 1
+                log.warning(f"Batch {batch_id} failed. Retry attempt {retry_count}/3...")
+                batch_id = submit_batch_job(filter_file)
+                batch_result_info = poll_batch_status(batch_id)
+                status = batch_result_info["status"]
+
             if status == "cancelled":
                 log.warning(f"Batch {batch_id} was cancelled due to timeout. Resubmitting batch...")
                 batch_id = submit_batch_job(filter_file)
@@ -134,7 +142,7 @@ def run_daily_pipeline():
                 status = batch_result_info["status"]
 
             if status != "completed":
-                log.error(f"Batch job failed with status: {status}")
+                log.error(f"Batch job failed with status: {status} after {retry_count} retries")
                 continue
 
             result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
@@ -179,6 +187,14 @@ def run_daily_pipeline():
             insight_result_info = poll_batch_status(insight_batch_id)
             status = insight_result_info["status"]
 
+            retry_count = 0
+            while status == "failed" and retry_count < 3:
+                retry_count += 1
+                log.warning(f"Insight batch {insight_batch_id} failed. Retry attempt {retry_count}/3...")
+                insight_batch_id = submit_batch_job(insight_file)
+                insight_result_info = poll_batch_status(insight_batch_id)
+                status = insight_result_info["status"]
+
             if status == "cancelled":
                 log.warning(f"Insight batch {insight_batch_id} was cancelled. Resubmitting...")
                 insight_batch_id = submit_batch_job(insight_file)
@@ -186,7 +202,7 @@ def run_daily_pipeline():
                 status = insight_result_info["status"]
 
             if status != "completed":
-                log.error(f"Insight batch job failed with status: {status}")
+                log.error(f"Insight batch job failed with status: {status} after {retry_count} retries")
                 continue
 
             insight_path = f"data/batch_responses/insight_result_{uuid.uuid4().hex}.jsonl"
