@@ -3,7 +3,7 @@
 import tiktoken
 import os
 import json
-import tiktoken
+import re
 from datetime import datetime, timedelta, timezone
 
 from config.config_loader import get_config
@@ -17,17 +17,18 @@ config = get_config()
 DEFAULT_ENCODING = "cl100k_base"
 ENCODER = tiktoken.get_encoding(DEFAULT_ENCODING)
 
-def estimate_tokens(text: str, model: str = None) -> int:
-    """Estimate number of tokens in a text string using GPT-4 tokenizer."""
+def estimate_tokens(text: str, model: str = "gpt-4o-mini") -> int:
+    """Estimate the number of tokens for a given text and model."""
     try:
-        return len(ENCODER.encode(text or ""))
-    except Exception as e:
-        log.error(f"Token estimation failed: {e}")
-        return config["openai"].get("max_tokens_per_post", 1000)
+        enc = tiktoken.encoding_for_model(model)
+    except KeyError:
+        enc = tiktoken.get_encoding("cl100k_base")
+    return len(enc.encode(text))
 
 def ensure_directory_exists(path: str):
-    """Ensure the directory exists."""
-    os.makedirs(path, exist_ok=True)
+    """Create a directory if it does not exist."""
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 def save_json(data: dict, filename: str):
     """Save dictionary as a JSON file."""
@@ -57,3 +58,10 @@ def truncate(text: str, max_tokens: int = 1000) -> str:
     if len(tokens) <= max_tokens:
         return text
     return ENCODER.decode(tokens[:max_tokens])
+
+def sanitize_text(text: str) -> str:
+    """Remove emojis and non-printable unicode characters from the input."""
+    if not isinstance(text, str):
+        return ""
+    emoji_pattern = re.compile("[\U00010000-\U0010FFFF]", flags=re.UNICODE)
+    return emoji_pattern.sub("", text).strip()

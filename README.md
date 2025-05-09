@@ -168,11 +168,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 | **Batch API Integration**                 | ✅ Done | With file-based payloads + polling + result fetch     |
 | **Cached Summaries → GPT Discovery**      | ✅ Done | Based on post text, fallback if prompt fails          |
 | **Comment scraping toggle**               | ✅ Done | Controlled via config key (`include_comments`)        |
+| **Retry on GPT Batch Failures**           | ✅ Done | Could retry `submit_batch_job()` once                 |
 
 ## Missing Features
 | Feature                                   | Status                     | Suggestion                                   |
 | ----------------------------------------- | -------------------------- | -------------------------------------------- |
-| **Retry on GPT Batch Failures**           | 🟡 Missing                 | Could retry `submit_batch_job()` once        |
 | **Parallel subreddit fetching**           | 🟡 Manual (sequential)     | Consider async/threaded fetch in future      |
 | **Tagged CSV Export / CLI**               | 🟡 Missing                 | Useful for non-technical review/debug        |
 | **Multi-language / non-English handling** | 🟡 Not supported           | Detect & skip or flag for English-only use   |

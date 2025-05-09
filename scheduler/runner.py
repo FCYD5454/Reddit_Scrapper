@@ -17,11 +17,16 @@ from db.cleaner import clean_old_entries
 from scheduler.cost_tracker import initialize_cost_tracking, can_process_batch
 from config.config_loader import get_config
 from utils.logger import setup_logger
-from utils.helpers import ensure_directory_exists
+from utils.helpers import ensure_directory_exists, sanitize_text
 
 log = setup_logger()
 config = get_config()
 
+def is_valid_post(post):
+    """Ensure post has valid title and body after sanitization."""
+    title = sanitize_text(post.get("title", ""))
+    body = sanitize_text(post.get("body", ""))
+    return bool(title and body)
 
 def split_batch_by_token_limit(payload, model: str, token_limit: int = 50_000):
     batches = []
@@ -45,7 +50,6 @@ def split_batch_by_token_limit(payload, model: str, token_limit: int = 50_000):
 
 def clean_old_batch_files(folder="data/batch_responses", days_old=None):
     """Delete .jsonl files older than `days_old`. Defaults to config value."""
-    import time
     days_old = days_old or config.get("cleanup", {}).get("batch_response_retention_days", 3)
     cutoff = time.time() - (days_old * 86400)
 
@@ -102,7 +106,13 @@ def run_daily_pipeline():
         log.warning("No posts found to analyze. Exiting pipeline.")
         return
 
-    log.info(f"Found {len(scraped_posts)} posts to analyze")
+    log.info(f"Found {len(scraped_posts)} posts before filtering invalid entries...")
+    scraped_posts = [p for p in scraped_posts if is_valid_post(p)]
+    log.info(f"{len(scraped_posts)} posts remain after sanitization/validation.")
+
+    if not scraped_posts:
+        log.warning("No valid posts after sanitization. Exiting pipeline.")
+        return
 
     log.info("Step 3: Preparing posts for filtering...")
     filter_batch = prepare_filter_batch(scraped_posts)
