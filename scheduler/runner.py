@@ -35,10 +35,16 @@ def submit_with_backoff(batch_items, model, generate_file_fn, label="filter") ->
 
             if status == "completed":
                 return batch_id
+            elif status == "cancelled":
+                log.warning(f"{label.capitalize()} batch {batch_id} was cancelled. Retrying in {delay}s...")
+                time.sleep(delay)
+                delay *= 2
+                continue
             elif status == "failed":
                 log.warning(f"{label.capitalize()} batch failed. Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= 2
+                continue
         except Exception as e:
             log.error(f"Error in {label} batch retry #{attempt}: {str(e)}")
             time.sleep(delay)
