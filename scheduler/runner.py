@@ -24,7 +24,7 @@ config = get_config()
 
 def submit_with_backoff(batch_items, model, generate_file_fn, label="filter") -> str | None:
     delay = 10
-    max_retries = 10
+    max_retries = 20
     for attempt in range(1, max_retries + 1):
         try:
             log.info(f"[Retry {attempt}/{max_retries}] Submitting {label} batch with {len(batch_items)} items...")
@@ -69,7 +69,7 @@ def is_valid_post(post):
     body = sanitize_text(post.get("body", ""))
     return bool(title and body)
 
-def split_batch_by_token_limit(payload, model: str, token_limit: int = 10_000):
+def split_batch_by_token_limit(payload, model: str, token_limit: int = 100_000):
     batches = []
     current_batch = []
     current_tokens = 0

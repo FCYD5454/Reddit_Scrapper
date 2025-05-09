@@ -168,7 +168,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 | **Batch API Integration**                 | ✅ Done | With file-based payloads + polling + result fetch     |
 | **Cached Summaries → GPT Discovery**      | ✅ Done | Based on post text, fallback if prompt fails          |
 | **Comment scraping toggle**               | ✅ Done | Controlled via config key (`include_comments`)        |
-| **Retry on GPT Batch Failures**           | ✅ Done | Could retry `submit_batch_job()` once                 |
+| **Retry on GPT Batch Failures**           | ✅ Done | Can retry 10 times with exponential backoff           |
 
 ## Missing Features
 | Feature                                   | Status                     | Suggestion                                   |
