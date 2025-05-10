@@ -39,16 +39,22 @@ def submit_with_backoff(batch_items, model, generate_file_fn, label="filter") ->
                 log.warning(f"{label.capitalize()} batch {batch_id} was cancelled. Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= 2
+                if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
                 continue
             elif status == "failed":
                 log.warning(f"{label.capitalize()} batch failed. Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= 2
+                if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
                 continue
         except Exception as e:
             log.error(f"Error in {label} batch retry #{attempt}: {str(e)}")
             time.sleep(delay)
             delay *= 2
+            if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
 
     # All retries failed
     log.error(f"❌ {label.capitalize()} batch failed after {max_retries} retries. Deferring.")
@@ -69,7 +75,7 @@ def is_valid_post(post):
     body = sanitize_text(post.get("body", ""))
     return bool(title and body)
 
-def split_batch_by_token_limit(payload, model: str, token_limit: int = 100_000):
+def split_batch_by_token_limit(payload, model: str, token_limit: int = 200_000):
     batches = []
     current_batch = []
     current_tokens = 0
