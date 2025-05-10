@@ -3,7 +3,7 @@
 import openai
 import os
 from typing import List, Dict
-from utils.helpers import estimate_tokens
+from utils.helpers import estimate_tokens, sanitize_text
 from utils.logger import setup_logger
 from config.config_loader import get_config
 
@@ -44,15 +44,20 @@ def prepare_batch_payload(posts: List[dict]) -> List[Dict]:
     """Returns list of payloads for batch submission."""
     payload = []
     for post in posts:
-        messages = build_filter_prompt(post)
+        raw_title = post.get("title", "")
+        raw_body = post.get("body", "")
+        title = sanitize_text(raw_title)
+        body = sanitize_text(raw_body)
+
+        if not title or not body:
+            continue  # skip malformed posts
+
+        messages = build_filter_prompt({"title": title, "body": body})
         payload.append({
             "id": post["id"],
             "messages": messages,
             "meta": {
-                "estimated_tokens": estimate_tokens(
-                    post.get("title", "") + post.get("body", ""),
-                    config["openai"].get("model_filter", "gpt-4o-mini")
-                )
+                "estimated_tokens": estimate_tokens(title + body, config["openai"].get("model_filter", "gpt-4o-mini"))
             }
         })
     return payload

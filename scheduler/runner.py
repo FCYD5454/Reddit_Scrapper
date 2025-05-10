@@ -17,13 +17,65 @@ from db.cleaner import clean_old_entries
 from scheduler.cost_tracker import initialize_cost_tracking, can_process_batch
 from config.config_loader import get_config
 from utils.logger import setup_logger
-from utils.helpers import ensure_directory_exists
+from utils.helpers import ensure_directory_exists, sanitize_text
 
 log = setup_logger()
 config = get_config()
 
+def submit_with_backoff(batch_items, model, generate_file_fn, label="filter") -> str | None:
+    delay = 10
+    max_retries = 20
+    for attempt in range(1, max_retries + 1):
+        try:
+            log.info(f"[Retry {attempt}/{max_retries}] Submitting {label} batch with {len(batch_items)} items...")
+            file_path = generate_file_fn(batch_items, model)
+            batch_id = submit_batch_job(file_path)
+            batch_info = poll_batch_status(batch_id)
+            status = batch_info["status"]
 
-def split_batch_by_token_limit(payload, model: str, token_limit: int = 50_000):
+            if status == "completed":
+                return batch_id
+            elif status == "cancelled":
+                log.warning(f"{label.capitalize()} batch {batch_id} was cancelled. Retrying in {delay}s...")
+                time.sleep(delay)
+                delay *= 2
+                if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
+                continue
+            elif status == "failed":
+                log.warning(f"{label.capitalize()} batch failed. Retrying in {delay}s...")
+                time.sleep(delay)
+                delay *= 2
+                if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
+                continue
+        except Exception as e:
+            log.error(f"Error in {label} batch retry #{attempt}: {str(e)}")
+            time.sleep(delay)
+            delay *= 2
+            if delay > 3600:
+                    delay = 3600  # cap delay to 1 hour
+
+    # All retries failed
+    log.error(f"❌ {label.capitalize()} batch failed after {max_retries} retries. Deferring.")
+    save_failed_batch(batch_items, label)
+    return None
+
+def save_failed_batch(batch_items, label, folder="data/deferred"):
+    os.makedirs(folder, exist_ok=True)
+    out_path = os.path.join(folder, f"failed_{label}.jsonl")
+    with open(out_path, "w", encoding="utf-8") as f:
+        for item in batch_items:
+            f.write(json.dumps(item) + "\n")
+    log.warning(f"Deferred {len(batch_items)} {label} items to {out_path}")
+
+def is_valid_post(post):
+    """Ensure post has valid title and body after sanitization."""
+    title = sanitize_text(post.get("title", ""))
+    body = sanitize_text(post.get("body", ""))
+    return bool(title and body)
+
+def split_batch_by_token_limit(payload, model: str, token_limit: int = 200_000):
     batches = []
     current_batch = []
     current_tokens = 0
@@ -45,7 +97,6 @@ def split_batch_by_token_limit(payload, model: str, token_limit: int = 50_000):
 
 def clean_old_batch_files(folder="data/batch_responses", days_old=None):
     """Delete .jsonl files older than `days_old`. Defaults to config value."""
-    import time
     days_old = days_old or config.get("cleanup", {}).get("batch_response_retention_days", 3)
     cutoff = time.time() - (days_old * 86400)
 
@@ -87,6 +138,7 @@ def get_high_potential_ids_from_filter_results(score_threshold=7.0):
 def run_daily_pipeline():
     log.info("\U0001F680 Starting Reddit scraping and analysis pipeline")
 
+    ensure_directory_exists("data/deferred")
     ensure_directory_exists("data")
     ensure_directory_exists("data/batch_responses")
     clean_old_batch_files()
@@ -102,7 +154,13 @@ def run_daily_pipeline():
         log.warning("No posts found to analyze. Exiting pipeline.")
         return
 
-    log.info(f"Found {len(scraped_posts)} posts to analyze")
+    log.info(f"Found {len(scraped_posts)} posts before filtering invalid entries...")
+    scraped_posts = [p for p in scraped_posts if is_valid_post(p)]
+    log.info(f"{len(scraped_posts)} posts remain after sanitization/validation.")
+
+    if not scraped_posts:
+        log.warning("No valid posts after sanitization. Exiting pipeline.")
+        return
 
     log.info("Step 3: Preparing posts for filtering...")
     filter_batch = prepare_filter_batch(scraped_posts)
@@ -118,38 +176,20 @@ def run_daily_pipeline():
 
     for i, batch in enumerate(filter_batches):
         log.info(f"Submitting sub-batch {i + 1}/{len(filter_batches)} with {len(batch)} entries...")
-        filter_file = generate_batch_payload(batch, model_filter)
         add_estimated_batch_cost(batch, model_filter)
 
-        try:
-            batch_id = submit_batch_job(filter_file)
-            log.info(f"Batch job submitted with ID: {batch_id}")
-            batch_result_info = poll_batch_status(batch_id)
-            status = batch_result_info["status"]
+        batch_id = submit_with_backoff(
+            batch_items=batch,
+            model=model_filter,
+            generate_file_fn=generate_batch_payload,
+            label="filter"
+        )
 
-            retry_count = 0
-            while status == "failed" and retry_count < 3:
-                retry_count += 1
-                log.warning(f"Batch {batch_id} failed. Retry attempt {retry_count}/3...")
-                batch_id = submit_batch_job(filter_file)
-                batch_result_info = poll_batch_status(batch_id)
-                status = batch_result_info["status"]
+        if not batch_id:
+            continue  # move on to next batch
 
-            if status == "cancelled":
-                log.warning(f"Batch {batch_id} was cancelled due to timeout. Resubmitting batch...")
-                batch_id = submit_batch_job(filter_file)
-                batch_result_info = poll_batch_status(batch_id)
-                status = batch_result_info["status"]
-
-            if status != "completed":
-                log.error(f"Batch job failed with status: {status} after {retry_count} retries")
-                continue
-
-            result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
-            download_batch_results(batch_id, result_path)
-        except Exception as e:
-            log.error(f"Error in filtering batch: {str(e)}")
-            continue
+        result_path = f"data/batch_responses/filter_result_{uuid.uuid4().hex}.jsonl"
+        download_batch_results(batch_id, result_path)
 
     log.info("Step 4: Selecting high-potential posts from filter results...")
     high_potential_ids = get_high_potential_ids_from_filter_results()
@@ -178,40 +218,21 @@ def run_daily_pipeline():
 
     for i, batch in enumerate(insight_batches):
         log.info(f"Submitting insight sub-batch {i + 1}/{len(insight_batches)} with {len(batch)} entries...")
-        insight_file = generate_batch_payload(batch, model_deep)
         add_estimated_batch_cost(batch, model_deep)
 
-        try:
-            insight_batch_id = submit_batch_job(insight_file)
-            log.info(f"Insight batch job submitted with ID: {insight_batch_id}")
-            insight_result_info = poll_batch_status(insight_batch_id)
-            status = insight_result_info["status"]
+        batch_id = submit_with_backoff(
+            batch_items=batch,
+            model=model_deep,
+            generate_file_fn=generate_batch_payload,
+            label="insight"
+        )
 
-            retry_count = 0
-            while status == "failed" and retry_count < 3:
-                retry_count += 1
-                log.warning(f"Insight batch {insight_batch_id} failed. Retry attempt {retry_count}/3...")
-                insight_batch_id = submit_batch_job(insight_file)
-                insight_result_info = poll_batch_status(insight_batch_id)
-                status = insight_result_info["status"]
-
-            if status == "cancelled":
-                log.warning(f"Insight batch {insight_batch_id} was cancelled. Resubmitting...")
-                insight_batch_id = submit_batch_job(insight_file)
-                insight_result_info = poll_batch_status(insight_batch_id)
-                status = insight_result_info["status"]
-
-            if status != "completed":
-                log.error(f"Insight batch job failed with status: {status} after {retry_count} retries")
-                continue
-
-            insight_path = f"data/batch_responses/insight_result_{uuid.uuid4().hex}.jsonl"
-            download_batch_results(insight_batch_id, insight_path)
-            all_insight_paths.append(insight_path)
-
-        except Exception as e:
-            log.error(f"Error in insight batch: {str(e)}")
+        if not batch_id:
             continue
+
+        insight_path = f"data/batch_responses/insight_result_{uuid.uuid4().hex}.jsonl"
+        download_batch_results(batch_id, insight_path)
+        all_insight_paths.append(insight_path)
 
     log.info("Step 5: Updating posts with deep insights...")
     try:
