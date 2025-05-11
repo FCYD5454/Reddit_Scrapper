@@ -1,6 +1,11 @@
 [![Visit Cronlytic](https://img.shields.io/badge/Cronlytic.com-Explore%20Serverless%20Scheduling-blue)](https://www.cronlytic.com)
 
 > Built to uncover hidden marketing signals on Reddit — and help power smarter growth for Cronlytic.com 🚀
+
+[![Watch the Explainer Video](https://img.youtube.com/vi/UeMfjuDnE_0/0.jpg)](https://youtu.be/UeMfjuDnE_0)
+
+> 📺 Click the thumbnail above to watch a full explainer — why I built this tool, how it works, and how you can use it to automate Reddit lead generation using GPT-4.
+
 # Reddit Scraper
 A Python application that scrapes Reddit for potential marketing leads, analyzes them with GPT models, and identifies high-value opportunities for a cron job scheduling SaaS.
 
