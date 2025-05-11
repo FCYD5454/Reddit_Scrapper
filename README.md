@@ -9,6 +9,19 @@
 # Reddit Scraper
 A Python application that scrapes Reddit for potential marketing leads, analyzes them with GPT models, and identifies high-value opportunities for a cron job scheduling SaaS.
 
+## 📑 Table of Contents
+- [Overview](#-overview)
+- [Setup](#-setup)
+- [Configuration](#-configuration)
+- [Running](#-running)
+- [Results](#-results)
+- [Project Structure](#-project-structure)
+- [Cost Controls](#-cost-controls)
+- [Missing Features](#-missing-features)
+- [Why This Exists](#-why-this-exists)
+- [License](#-license)
+- [Third-Party Licenses](#-third-party-licenses)
+
 ## 📋 Overview
 
 This tool uses a combination of Reddit's API and OpenAI's GPT models to:
