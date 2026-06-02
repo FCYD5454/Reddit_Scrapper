@@ -18,6 +18,22 @@ _config = get_config()
 _ADAPTER_PROVIDERS = {"gemini", "deepseek"}
 
 
+class MockRequestCounts:
+    """Mock the OpenAI Batch request_counts object."""
+    def __init__(self, completed: int = 1, total: int = 1):
+        self.completed = completed
+        self.total = total
+
+
+class MockBatch:
+    """Mock the OpenAI Batch object for stateless/simulated adapters."""
+    def __init__(self, batch_id: str, status: str, total_count: int = 1):
+        self.id = batch_id
+        self.status = status
+        self.request_counts = MockRequestCounts(completed=total_count, total=total_count)
+        self.output_file_id = f"file_mock_{batch_id}"
+
+
 def _provider():
     return _config["ai"]["provider"]
 
@@ -123,7 +139,9 @@ def poll_batch_status(batch_id, timeout_seconds=10800):
     if _is_adapter_provider():
         instance = _get_adapter_instance()
         result = instance.poll_batch(batch_id, timeout_seconds=timeout_seconds)
-        return {"status": result["status"], "batch": result.get("meta", {})}
+        # Return a normalised dictionary matching OpenAI's return structure
+        mock_batch = MockBatch(batch_id, result["status"])
+        return {"status": result["status"], "batch": mock_batch}
     from gpt.batch_api import poll_batch_status as fn
     return fn(batch_id, timeout_seconds=timeout_seconds)
 
@@ -238,7 +256,7 @@ def retrieve_batch(batch_id):
     if _is_adapter_provider():
         instance = _get_adapter_instance()
         result = instance.poll_batch(batch_id)
-        return {"id": batch_id, "status": result["status"]}
+        return MockBatch(batch_id, result["status"])
     import openai
     return openai.batches.retrieve(batch_id)
 
