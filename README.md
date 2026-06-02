@@ -40,7 +40,7 @@ The application maintains a balance between focused and exploratory subreddits, 
 ### Prerequisites
 
 - Python 3.10+
-- Reddit API credentials ([create an app here](https://www.reddit.com/prefs/apps))
+- **NO Reddit API Keys Required!** (The application completely bypasses the official API and uses a highly robust, headless Playwright scraping engine on `old.reddit.com`)
 - At least one AI provider API key — OpenAI, Anthropic, **Gemini**, or **DeepSeek** (configurable via `config.yaml`)
 
 ### Installation
@@ -62,17 +62,19 @@ The application maintains a balance between focused and exploratory subreddits, 
    pip install -r requirements.txt
    ```
 
-4. Set up environment variables by copying `.env.template` to `.env`:
+4. Install Playwright browser binaries (CRITICAL for scraping):
    ```
-   cp .env.template .env
+   playwright install chromium
    ```
 
-5. Edit `.env` and add your API credentials — include keys only for the provider(s) you intend to use:
+5. Set up environment variables by copying `.env.providers.template` to `.env`:
    ```
-   REDDIT_CLIENT_ID=your_client_id
-   REDDIT_CLIENT_SECRET=your_client_secret
-   REDDIT_USER_AGENT=script:cronlytic-reddit-scraper:v1.0 (by /u/yourusername)
+   cp .env.providers.template .env
+   ```
 
+6. Edit `.env` and add your AI credentials:
+   ```
+   # .env
    # Choose ONE (or more) AI provider:
    OPENAI_API_KEY=your_openai_api_key
    ANTHROPIC_API_KEY=your_anthropic_api_key
@@ -114,6 +116,18 @@ ai:
     model_filter: deepseek-chat
     model_deep:   deepseek-chat
 ```
+
+#### How the No-API-Key Playwright Scraper works
+
+The application completely bypasses Reddit's official API and its aggressive Cloudflare Bot protections:
+
+1. **`headless browser`** — Uses Playwright (Chromium) to simulate real human browsing behavior.
+2. **`old.reddit.com`** — Targets the highly static, lightweight legacy Reddit interface, completely avoiding modern Obfuscated Shadow DOM / React dynamic hydration.
+3. **`expando-button clicks`** — Automatically clicks the text-expanding elements to extract `selftext` (post body) instantly without issuing extra page requests.
+4. **`NSFW click-through`** — Automatically handles "Over 18" age-gating screens.
+5. **`Recursive comments extraction`** — If `include_comments` is enabled, navigates to the comments page and parses nested thread comments tree seamlessly.
+
+This parsed data is encapsulated into native `MockPost` and `MockComment` mock objects, matching PRAW classes perfectly, ensuring the rest of the SQLite database and AI adapters continue to run with zero alterations.
 
 #### How Gemini and DeepSeek batch processing works
 
