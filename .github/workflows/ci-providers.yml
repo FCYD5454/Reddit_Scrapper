@@ -10,6 +10,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}   # ← 把 repo root 加到 PYTHONPATH
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
@@ -22,5 +24,6 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Run tests
         run: |
+          echo "PYTHONPATH=$PYTHONPATH"
+          python -c "import sys; print('sys.path[0]=', sys.path[0])"
           pytest -q
-
