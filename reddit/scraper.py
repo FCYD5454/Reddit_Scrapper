@@ -259,43 +259,56 @@ def fetch_posts_from_subreddit(subreddit_name: str, limit: int = 100) -> list:
             comment_fetched += len(comments_list)
             post.comments = MockComments(comments_list)
 
-            results.append({
-                "id": post.id,
-                "title": post.title,
-                "body": post.selftext,
-                "created_utc": post.created_utc,
-                "subreddit": subreddit_name,
-                "url": f"https://www.reddit.com{post.permalink}",
-                "type": "post"
-            })
-            post_remaining += 1
+        # Safely format URL to avoid domain duplication
+        url = post.permalink
+        if url.startswith("/"):
+            url = f"https://www.reddit.com{url}"
+        else:
+            url = url.replace("old.reddit.com", "www.reddit.com")
 
-            if include_comments and comments_list:
-                for comment in comments_list:
-                    if comment.id in seen_ids:
-                        comment_skip_seen += 1
-                        continue
-                    seen_ids.add(comment.id)
+        results.append({
+            "id": post.id,
+            "title": post.title,
+            "body": post.selftext,
+            "created_utc": post.created_utc,
+            "subreddit": subreddit_name,
+            "url": url,
+            "type": "post"
+        })
+        post_remaining += 1
 
-                    if not is_post_in_age_range(comment, min_days, max_days):
-                        comment_skip_age += 1
-                        continue
-                    if is_already_processed(comment.id):
-                        comment_skip_dupl += 1
-                        continue
+        if include_comments and comments_list:
+            for comment in comments_list:
+                if comment.id in seen_ids:
+                    comment_skip_seen += 1
+                    continue
+                seen_ids.add(comment.id)
 
-                    results.append({
-                        "id": comment.id,
-                        "title": post.title,
-                        "body": comment.body,
-                        "post_body": post.selftext,
-                        "created_utc": comment.created_utc,
-                        "subreddit": subreddit_name,
-                        "url": f"https://www.reddit.com{comment.permalink}",
-                        "type": "comment",
-                        "parent_post_id": post.id,
-                    })
-                    comment_remaining += 1
+                if not is_post_in_age_range(comment, min_days, max_days):
+                    comment_skip_age += 1
+                    continue
+                if is_already_processed(comment.id):
+                    comment_skip_dupl += 1
+                    continue
+
+                c_url = comment.permalink
+                if c_url.startswith("/"):
+                    c_url = f"https://www.reddit.com{c_url}"
+                else:
+                    c_url = c_url.replace("old.reddit.com", "www.reddit.com")
+
+                results.append({
+                    "id": comment.id,
+                    "title": post.title,
+                    "body": comment.body,
+                    "post_body": post.selftext,
+                    "created_utc": comment.created_utc,
+                    "subreddit": subreddit_name,
+                    "url": c_url,
+                    "type": "comment",
+                    "parent_post_id": post.id,
+                })
+                comment_remaining += 1
 
         browser.close()
 
@@ -315,7 +328,7 @@ def fetch_posts_from_subreddit(subreddit_name: str, limit: int = 100) -> list:
 
 def is_post_in_age_range(post, min_days, max_days) -> bool:
     post_date = datetime.datetime.fromtimestamp(post.created_utc)
-    age_days = (datetime.datetime.utcnow() - post_date).days
+    age_days = (datetime.datetime.now() - post_date).days
     return min_days <= age_days <= max_days
 
 
