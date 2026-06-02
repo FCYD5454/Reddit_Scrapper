@@ -96,13 +96,19 @@ class DeepSeekProvider(ProviderBase):
         model: str = item.get("model") or self.model
         url = f"{self.base_url}/chat/completions"
 
+        # Check if we are using the DeepSeek-R1 reasoning model
+        is_reasoner = "reasoner" in model.lower()
+
         body: Dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "response_format": {"type": "json_object"},
-            "temperature": 0,
             "max_tokens": 4096,
         }
+
+        # deepseek-reasoner (R1) does not support JSON Mode or custom temperatures
+        if not is_reasoner:
+            body["response_format"] = {"type": "json_object"}
+            body["temperature"] = 0
 
         last_exc: Optional[Exception] = None
         for attempt in range(MAX_RETRIES):
