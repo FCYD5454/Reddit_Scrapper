@@ -33,7 +33,7 @@ scraper:
 
 # AI provider settings
 ai:
-  provider: openai               # "openai" or "anthropic"
+  provider: openai               # "openai", "anthropic", "gemini", or "deepseek"
   openai:
     model_filter: gpt-5-mini        # For pre-filtering stage
     model_deep: gpt-5.1             # For insight extraction
@@ -44,6 +44,14 @@ ai:
     model_filter: claude-haiku-4-5-20251001
     model_deep: claude-sonnet-4-5-20250929
     default_enqueued_token_limit: 10_000_000
+  gemini:
+    model_filter: gemini-2.0-flash  # Fast, cost-efficient filtering model
+    model_deep: gemini-2.5-pro      # High-quality insight extraction model
+    default_enqueued_token_limit: 4_000_000
+  deepseek:
+    model_filter: deepseek-chat     # OpenAI-compatible chat model
+    model_deep: deepseek-chat
+    default_enqueued_token_limit: 2_000_000
   use_batch_api: true
   monthly_budget_usd: 100           # Cost cap for safety
   max_tokens_per_post: 1000         # Estimate for budgeting
