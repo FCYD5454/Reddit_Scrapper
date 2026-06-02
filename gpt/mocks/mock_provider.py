@@ -1,6 +1,6 @@
-from typing import List, Dict, Any
+﻿from typing import List, Dict, Any
 import time
-from .provider_base import ProviderBase
+from gpt.provider_base import ProviderBase
 
 class MockProvider(ProviderBase):
     """A simple mock provider for local testing. Returns synthetic ids and echoes input."""
