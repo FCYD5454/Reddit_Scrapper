@@ -17,6 +17,16 @@ def _get_client():
         import anthropic
         api_key = config["ai"]["anthropic"].get("api_key") or os.getenv("ANTHROPIC_API_KEY")
         return anthropic.Anthropic(api_key=api_key), "anthropic"
+    elif provider == "deepseek":
+        from openai import OpenAI
+        api_key = config["ai"]["deepseek"].get("api_key") or os.getenv("DEEPSEEK_API_KEY")
+        base_url = config["ai"]["deepseek"].get("base_url") or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        return OpenAI(api_key=api_key, base_url=base_url), "deepseek"
+    elif provider == "gemini":
+        from openai import OpenAI
+        api_key = config["ai"]["gemini"].get("api_key") or os.getenv("GEMINI_API_KEY")
+        base_url = config["ai"]["gemini"].get("base_url") or os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+        return OpenAI(api_key=api_key, base_url=base_url), "gemini"
     else:
         from openai import OpenAI
         return OpenAI(), "openai"
