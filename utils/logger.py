@@ -2,11 +2,21 @@
 
 import logging
 import os
+import sys
 from datetime import datetime
 from config.config_loader import get_config
 
 def setup_logger():
     """Configure and return a logger instance."""
+    # Reconfigure stdout/stderr to use UTF-8 under Windows shell (avoids cp950 emoji errors)
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding='utf-8')
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
     config = get_config()
     log_level = getattr(logging, config.get("log_level", "INFO"))
 
