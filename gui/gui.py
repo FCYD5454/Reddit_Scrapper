@@ -58,7 +58,8 @@ def load_posts_with_insights(
     query = """
     SELECT id, url, title, body, relevance_score, pain_score, emotion_score,
            COALESCE(technical_depth_score, 0) as technical_depth_score,
-           subreddit, created_utc, processed_at
+           subreddit, created_utc, processed_at,
+           willingness_to_pay, existing_workarounds, micro_saas_idea, target_buyer
     FROM posts
     WHERE insight_processed = 1
     """
@@ -71,7 +72,7 @@ def load_posts_with_insights(
     insights_path = Path(insights_dir)
 
     for jsonl_file in insights_path.glob("insight_result_*.jsonl"):
-        with open(jsonl_file, 'r') as f:
+        with open(jsonl_file, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
                     data = json.loads(line.strip())
@@ -79,8 +80,8 @@ def load_posts_with_insights(
                     if not custom_id:
                         continue
 
-                    if provider == "anthropic":
-                        # Anthropic format: {"custom_id": "...", "content": "...", "result_type": "..."}
+                    if provider == "anthropic" or provider in ("gemini", "deepseek"):
+                        # Custom simulated adapters reuse Anthropic JSONL format
                         if data.get("result_type") != "succeeded":
                             continue
                         content = data.get("content", "")
@@ -112,6 +113,13 @@ def load_posts_with_insights(
     posts_df['technical_moat'] = posts_df['id'].map(lambda x: insights_data.get(x, {}).get('technical_moat', ''))
     posts_df['business_model'] = posts_df['id'].map(lambda x: insights_data.get(x, {}).get('business_model', ''))
     posts_df['business_type'] = posts_df['id'].map(lambda x: insights_data.get(x, {}).get('business_type', ''))
+
+    # Load new SaaS market insights columns (fall back to JSONL first, then DB columns)
+    for col in ('willingness_to_pay', 'existing_workarounds', 'micro_saas_idea', 'target_buyer'):
+        posts_df[col] = posts_df.apply(
+            lambda row: insights_data.get(row['id'], {}).get(col, row.get(col, '')),
+            axis=1
+        )
 
     return posts_df
 
@@ -151,35 +159,42 @@ def display_post_card(post: pd.Series):
     # Add some white space
     st.markdown("")
 
-    with st.expander("🔍 Details"):
+    with st.expander("💡 檢視 SaaS 商機提案卡片 (SaaS Opportunity Card)", expanded=True):
         st.markdown("#### 📝 " + post['title'])
         # Truncate long posts
         body_text = post['body'][:500] + "..." if len(post['body']) > 500 else post['body']
-        st.markdown(body_text)
+        st.markdown(f"*{body_text}*")
+
+        st.markdown("---")
+
+        # Two-column layout for structured PM/SaaS Proposal
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("##### 💡 AI 建議的 Micro-SaaS 產品點子")
+            idea_val = post.get('micro_saas_idea') or post.get('product_opportunity') or '尚無明確 MVP 提案'
+            st.info(idea_val)
+
+            st.markdown("##### 💰 付費意願與付費訊號")
+            wtp_val = post.get('willingness_to_pay') or '尚無分析到具體預算或高昂的時間成本抱怨'
+            st.markdown(f"*{wtp_val}*")
+
+        with col_right:
+            st.markdown("##### 🎯 關鍵付費買家 (Target Buyer)")
+            buyer_val = post.get('target_buyer') or post.get('affected_audience') or '泛 B 端/未知'
+            st.success(f"**核心決策人**：{buyer_val}")
+
+            st.markdown("##### 🛠️ 現有解決笨方法 (Workarounds)")
+            workarounds_val = post.get('existing_workarounds') or post.get('existing_alternatives') or '尚無描述'
+            st.markdown(f"*{workarounds_val}*")
 
         if post['justification']:
-            st.markdown("**Justification:**")
-            st.markdown(post['justification'])
-
-        # Show additional insight fields
-        details_parts = []
-        if post.get('affected_audience'):
-            details_parts.append(f"**Affected Audience:** {post['affected_audience']}")
-        if post.get('business_type'):
-            details_parts.append(f"**Business Type:** {post['business_type']}")
-        if post.get('existing_alternatives'):
-            details_parts.append(f"**Existing Alternatives:** {post['existing_alternatives']}")
-        if post.get('build_complexity'):
-            details_parts.append(f"**Build Complexity:** {post['build_complexity']}")
-        if post.get('technical_moat'):
-            details_parts.append(f"**Technical Moat:** {post['technical_moat']}")
-        if post.get('business_model'):
-            details_parts.append(f"**Business Model:** {post['business_model']}")
-
-        if details_parts:
             st.markdown("---")
-            for part in details_parts:
-                st.markdown(part)
+            st.markdown(f"**可行性評估 (Justification):** {post['justification']}")
+
+        # Render technical moat and monetization details
+        st.markdown("---")
+        st.markdown(f"🛡️ **技術複製壁壘 (Technical Moat):** {post.get('technical_moat', '無')}")
+        st.markdown(f"📊 **商業變現模型 (Business Model):** {post.get('business_model', '無')} | **開發複雜度:** {post.get('build_complexity', '無')}")
 
 def main():
     st.title("📊 Reddit Posts Insights Viewer")
@@ -250,6 +265,14 @@ def main():
     emotion_range = create_safe_slider("Emotion Score Range", df['emotion_score'], "emotion")
     tech_depth_range = create_safe_slider("Technical Depth Range", df['technical_depth_score'], "tech_depth")
 
+    # High Willingness to Pay Filter
+    st.sidebar.subheader("🎯 商業信號過濾")
+    show_high_wtp_only = st.sidebar.checkbox(
+        "只顯示強烈付費意願的點子",
+        value=False,
+        help="過濾僅顯示 AI 成功挖掘到具體花費、時間浪費、或成本抱怨等付費意願訊號的商機卡片。"
+    )
+
     # Subreddit filter
     subreddits = df['subreddit'].unique().tolist()
     selected_subreddits = st.sidebar.multiselect(
@@ -286,6 +309,14 @@ def main():
         (df['technical_depth_score'] <= tech_depth_range[1]) &
         (df['subreddit'].isin(selected_subreddits))
     ]
+
+    # Apply High Willingness to Pay Filter
+    if show_high_wtp_only:
+        filtered_df = filtered_df[
+            filtered_df['willingness_to_pay'].notna() &
+            (filtered_df['willingness_to_pay'].str.strip() != "") &
+            (~filtered_df['willingness_to_pay'].str.contains("尚無", case=False, na=False))
+        ]
 
     # Apply sorting
     ascending = sort_order == 'Ascending'
