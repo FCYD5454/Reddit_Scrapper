@@ -3,21 +3,20 @@
 # Target communities
 subreddits:
   primary:
-    - devops
-    - selfhosted
-    - webdev
     - startups
-    - personalfinance
-    - Parenting
-    - smallbusiness
-    - Fitness
     - saas
     - entrepreneurship
-    - sports
-    - technology
-    - security
-    - pregnant
-    - Beauty
+    - ecommerce
+    - shopify
+    - dropship
+    - marketing
+    - SEO
+    - PPC
+    - RealEstate
+    - realtors
+    - smallbusiness
+    - sweatystartup
+    - bookkeeping
   exploratory_limit: 12             # Max exploratory subreddits at a time
   exploratory_refresh_days: 7       # How often to refresh improvised list
   exploratory_percentage: 90        # % of posts from exploratory communities
@@ -25,8 +24,8 @@ subreddits:
 
 # Reddit scraping settings
 scraper:
-  min_post_age_days: 5              # Post must be at least 5 days old
-  max_post_age_days: 7              # Ignore posts older than 3 months
+  min_post_age_days: 0              # Post must be at least 5 days old
+  max_post_age_days: 90              # Ignore posts older than 3 months
   max_items_per_day: 10           # Total posts/comments scraped per run
   include_comments: true
   rate_limit_per_minute: 60         # Reddit API rate limit
@@ -49,8 +48,8 @@ ai:
     model_deep: gemini-3.5-flash      # High-quality insight extraction model
     default_enqueued_token_limit: 4_000_000
   deepseek:
-    model_filter: deepseek-chat     # Fast model for initial filtering
-    model_deep: deepseek-reasoner   # Use DeepSeek-R1 (reasoning) for best market insights
+    model_filter: deepseek-v4-flash
+    model_deep: deepseek-v4-pro
     default_enqueued_token_limit: 2_000_000
   use_batch_api: true
   monthly_budget_usd: 100           # Cost cap for safety
