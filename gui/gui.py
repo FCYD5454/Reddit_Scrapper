@@ -159,7 +159,7 @@ def display_post_card(post: pd.Series):
     # Add some white space
     st.markdown("")
 
-    with st.expander("💡 檢視 SaaS 商機提案卡片 (SaaS Opportunity Card)", expanded=True):
+    with st.expander(f"💡 檢視 SaaS 商機提案卡片 - #{post['id']}", expanded=True):
         st.markdown("#### 📝 " + post['title'])
         # Truncate long posts
         body_text = post['body'][:500] + "..." if len(post['body']) > 500 else post['body']
@@ -167,25 +167,22 @@ def display_post_card(post: pd.Series):
 
         st.markdown("---")
 
-        # Two-column layout for structured PM/SaaS Proposal
-        col_left, col_right = st.columns(2)
-        with col_left:
-            st.markdown("##### 💡 AI 建議的 Micro-SaaS 產品點子")
-            idea_val = post.get('micro_saas_idea') or post.get('product_opportunity') or '尚無明確 MVP 提案'
-            st.info(idea_val)
+        # Standard vertical layout with high contrast status blocks - 100% immune to Streamlit columns rendering bugs
+        st.markdown("##### 💡 AI 建議的 Micro-SaaS 產品點子")
+        idea_val = post.get('micro_saas_idea') or post.get('product_opportunity') or '尚無明確 MVP 提案'
+        st.info(idea_val)
 
-            st.markdown("##### 💰 付費意願與付費訊號")
-            wtp_val = post.get('willingness_to_pay') or '尚無分析到具體預算或高昂的時間成本抱怨'
-            st.markdown(f"*{wtp_val}*")
+        st.markdown("##### 🎯 關鍵付費買家 (Target Buyer)")
+        buyer_val = post.get('target_buyer') or post.get('affected_audience') or '泛 B 端/未知'
+        st.success(f"**核心決策人**：{buyer_val}")
 
-        with col_right:
-            st.markdown("##### 🎯 關鍵付費買家 (Target Buyer)")
-            buyer_val = post.get('target_buyer') or post.get('affected_audience') or '泛 B 端/未知'
-            st.success(f"**核心決策人**：{buyer_val}")
+        st.markdown("##### 💰 付費意願與付費訊號")
+        wtp_val = post.get('willingness_to_pay') or '尚無分析到具體預算或高昂的時間成本抱怨'
+        st.warning(wtp_val)
 
-            st.markdown("##### 🛠️ 現有解決笨方法 (Workarounds)")
-            workarounds_val = post.get('existing_workarounds') or post.get('existing_alternatives') or '尚無描述'
-            st.markdown(f"*{workarounds_val}*")
+        st.markdown("##### 🛠️ 現有解決笨方法 (Workarounds)")
+        workarounds_val = post.get('existing_workarounds') or post.get('existing_alternatives') or '尚無描述'
+        st.markdown(f"> *{workarounds_val}*")
 
         if post['justification']:
             st.markdown("---")
