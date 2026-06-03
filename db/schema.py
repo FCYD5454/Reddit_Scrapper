@@ -40,7 +40,11 @@ def create_tables():
         implementability_score REAL,
         technical_depth_score REAL,
         insight_processed INTEGER DEFAULT 0,
-        insight_processed_at TEXT
+        insight_processed_at TEXT,
+        willingness_to_pay TEXT,
+        existing_workarounds TEXT,
+        micro_saas_idea TEXT,
+        target_buyer TEXT
     );
     """)
 
@@ -64,6 +68,14 @@ def create_tables():
         log.info("Added parent_post_id column to posts table")
     except sqlite3.OperationalError:
         pass  # Column already exists
+
+    # Migration: add SaaS market insight columns if missing
+    for col in ("willingness_to_pay", "existing_workarounds", "micro_saas_idea", "target_buyer"):
+        try:
+            c.execute(f"ALTER TABLE posts ADD COLUMN {col} TEXT")
+            log.info(f"Added {col} column to posts table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     c.execute("CREATE INDEX IF NOT EXISTS idx_posts_processed_at ON posts(processed_at);")
     c.execute("CREATE INDEX IF NOT EXISTS idx_posts_relevance ON posts(relevance_score);")
