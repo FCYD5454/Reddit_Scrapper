@@ -237,30 +237,30 @@ def main():
     # Score range filters
     st.sidebar.subheader("分數過濾器 (Score Filters)")
 
-    # Helper function to create safe sliders
-    def create_safe_slider(label: str, values: pd.Series, key: str = None):
-        min_val = float(values.min())
-        max_val = float(values.max())
+    # Helper function to create safe sliders with custom absolute bounds and high precision
+    def create_safe_slider(label: str, values: pd.Series, min_abs: float = 0.0, max_abs: float = 10.0, step: float = 0.01, key: str = None):
+        min_val = float(values.min()) if not values.empty else min_abs
+        max_val = float(values.max()) if not values.empty else max_abs
 
-        # Handle case where all values are the same
-        if min_val == max_val:
-            st.sidebar.write(f"**{label}**: {min_val:.2f} (所有貼文值皆相同)")
-            return (min_val, max_val)
+        # Ensure bounds cover both data range and desired absolute range
+        min_boundary = min(min_abs, min_val)
+        max_boundary = max(max_abs, max_val)
 
         return st.sidebar.slider(
             label,
-            min_value=min_val,
-            max_value=max_val,
-            value=(min_val, max_val),
-            step=0.1,
+            min_value=float(min_boundary),
+            max_value=float(max_boundary),
+            value=(float(min_val), float(max_val)),
+            step=step,
+            format="%.2f",
             key=key
         )
 
-    roi_range = create_safe_slider("ROI 權重範圍", df['roi_weight'], "roi")
-    relevance_range = create_safe_slider("關聯度範圍", df['relevance_score'], "relevance")
-    pain_range = create_safe_slider("痛點強度範圍", df['pain_score'], "pain")
-    emotion_range = create_safe_slider("情感強度範圍", df['emotion_score'], "emotion")
-    tech_depth_range = create_safe_slider("技術深度範圍", df['technical_depth_score'], "tech_depth")
+    roi_range = create_safe_slider("ROI 權重範圍", df['roi_weight'], min_abs=0.0, max_abs=5.0, step=0.01, key="roi")
+    relevance_range = create_safe_slider("關聯度範圍", df['relevance_score'], min_abs=0.0, max_abs=10.0, step=0.01, key="relevance")
+    pain_range = create_safe_slider("痛點強度範圍", df['pain_score'], min_abs=0.0, max_abs=10.0, step=0.01, key="pain")
+    emotion_range = create_safe_slider("情感強度範圍", df['emotion_score'], min_abs=0.0, max_abs=10.0, step=0.01, key="emotion")
+    tech_depth_range = create_safe_slider("技術深度範圍", df['technical_depth_score'], min_abs=0.0, max_abs=10.0, step=0.01, key="tech_depth")
 
     # High Willingness to Pay Filter
     st.sidebar.subheader("🎯 商業信號過濾")
