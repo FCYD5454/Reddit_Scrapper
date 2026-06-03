@@ -59,7 +59,8 @@ def load_posts_with_insights(
     SELECT id, url, title, body, relevance_score, pain_score, emotion_score,
            COALESCE(technical_depth_score, 0) as technical_depth_score,
            subreddit, created_utc, processed_at,
-           willingness_to_pay, existing_workarounds, micro_saas_idea, target_buyer
+           willingness_to_pay, existing_workarounds, micro_saas_idea, target_buyer,
+           COALESCE(is_pinned, 0) as is_pinned
     FROM posts
     WHERE insight_processed = 1
     """
@@ -115,9 +116,9 @@ def load_posts_with_insights(
     posts_df['business_type'] = posts_df['id'].map(lambda x: insights_data.get(x, {}).get('business_type', ''))
 
     # Load new SaaS market insights columns (fall back to JSONL first, then DB columns)
-    for col in ('willingness_to_pay', 'existing_workarounds', 'micro_saas_idea', 'target_buyer'):
+    for col in ('willingness_to_pay', 'existing_workarounds', 'micro_saas_idea', 'target_buyer', 'is_pinned'):
         posts_df[col] = posts_df.apply(
-            lambda row: insights_data.get(row['id'], {}).get(col, row.get(col, '')),
+            lambda row: insights_data.get(row['id'], {}).get(col, row.get(col, 0 if col == 'is_pinned' else '')),
             axis=1
         )
 
@@ -144,10 +145,24 @@ def display_post_card(post: pd.Series):
             st.info(post['pain_point'])
 
     # Title and tags row
-    col1, col2 = st.columns([1, 1])
-    with col1:
+    col_title, col_pin = st.columns([12, 2])
+    with col_title:
         st.markdown(f"**🔗 貼文原網址**：[{post['title']}](<{post['url']}>)")
-    with col2:
+    with col_pin:
+        is_pinned = bool(post.get('is_pinned', 0))
+        btn_label = "⭐ 取消收藏" if is_pinned else "🌟 永久收藏"
+        if st.button(btn_label, key=f"pin_{post['id']}"):
+            from db.writer import update_post_pinned_status
+            new_status = 0 if is_pinned else 1
+            update_post_pinned_status(post['id'], new_status)
+            st.cache_data.clear()
+            st.rerun()
+            
+    with col1: # This is just a dummy to ensure we don't break next blocks
+        pass
+        
+    tags_col1, tags_col2 = st.columns([1, 1])
+    with tags_col1:
         tags_list = [tag.strip() for tag in post['tags'].split(',') if tag.strip()]
         tags_html = "".join(map(lambda tag: f"<span style='background-color: #2196F3; color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px; margin-right: 4px; display: inline-block; margin-bottom: 2px;'>{tag}</span>", tags_list))
         st.markdown(tags_html, unsafe_allow_html=True)
