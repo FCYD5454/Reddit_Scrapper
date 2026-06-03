@@ -303,6 +303,25 @@ def main():
         index=0
     )
 
+    # 🚀 Execution Control Console in Sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🚀 全自動控制台 (Control Console)")
+    st.sidebar.markdown("您可以直接在網頁上一鍵啟動 Reddit 爬蟲與 DeepSeek-R1 分析管線。")
+    
+    if st.sidebar.button("⚙️ 啟動全自動爬蟲與 AI 分析", help="點擊自動調用 Playwright 爬蟲與 R1 推理模型"):
+        with st.spinner("正在啟動 Playwright 前往 Reddit 爬取並調用 DeepSeek-R1 提取商機中... 這可能需要 2-5 分鐘，請稍候"):
+            try:
+                # Dynamically import and run the runner pipeline
+                from scheduler.runner import run_daily_pipeline
+                run_daily_pipeline()
+                
+                st.sidebar.success("🎉 管線執行完畢！最新商機已自動載入！")
+                # Clear Streamlit cache to load fresh SQLite rows and rerun page
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"❌ 管線執行失敗：{str(e)}")
+
     # Apply filters
     filtered_df = df[
         (df['roi_weight'] >= roi_range[0]) &
