@@ -127,3 +127,15 @@ def mark_insight_processed(post_id: str):
         conn.commit()
     except sqlite3.Error as e:
         print(f"[SQLite mark_insight_processed Error] {e}")
+
+def update_post_pinned_status(post_id: str, is_pinned: int):
+    """Pin or unpin a post to prevent it from being auto-deleted during database cleanup."""
+    conn = _get_connection()
+    try:
+        conn.execute("""
+        UPDATE posts SET is_pinned = ?
+        WHERE id = ?
+        """, (is_pinned, post_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"[SQLite update_post_pinned_status Error] {e}")

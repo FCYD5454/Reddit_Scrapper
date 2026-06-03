@@ -44,7 +44,8 @@ def create_tables():
         willingness_to_pay TEXT,
         existing_workarounds TEXT,
         micro_saas_idea TEXT,
-        target_buyer TEXT
+        target_buyer TEXT,
+        is_pinned INTEGER DEFAULT 0
     );
     """)
 
@@ -76,6 +77,13 @@ def create_tables():
             log.info(f"Added {col} column to posts table")
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+    # Migration: add is_pinned column if missing (for permanent saving)
+    try:
+        c.execute("ALTER TABLE posts ADD COLUMN is_pinned INTEGER DEFAULT 0")
+        log.info("Added is_pinned column to posts table")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
 
     c.execute("CREATE INDEX IF NOT EXISTS idx_posts_processed_at ON posts(processed_at);")
     c.execute("CREATE INDEX IF NOT EXISTS idx_posts_relevance ON posts(relevance_score);")
