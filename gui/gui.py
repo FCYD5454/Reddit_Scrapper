@@ -17,7 +17,7 @@ from config.config_loader import get_config
 
 # Configure Streamlit page
 st.set_page_config(
-    page_title="Reddit Posts Insights Viewer",
+    page_title="Reddit 貼文商機探測器 (Reddit Posts Insights Viewer)",
     page_icon="📊",
     layout="wide"
 )
@@ -131,22 +131,22 @@ def display_post_card(post: pd.Series):
         col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 9])
 
         with col1:
-            st.metric("ROI", f"{post['roi_weight']}")
+            st.metric("ROI 評估", f"{post['roi_weight']}")
         with col2:
-            st.metric("Relevance", f"{post['relevance_score']:.2f}")
+            st.metric("關聯度 (Relevance)", f"{post['relevance_score']:.2f}")
         with col3:
-            st.metric("Pain Score", f"{post['pain_score']:.2f}")
+            st.metric("痛點分數 (Pain)", f"{post['pain_score']:.2f}")
         with col4:
-            st.metric("Emotion", f"{post['emotion_score']:.2f}")
+            st.metric("情感強度 (Emotion)", f"{post['emotion_score']:.2f}")
         with col5:
-            st.metric("Tech Depth", f"{post['technical_depth_score']:.1f}")
+            st.metric("技術深度 (Tech Depth)", f"{post['technical_depth_score']:.1f}")
         with col6:
             st.info(post['pain_point'])
 
     # Title and tags row
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.markdown(f"[{post['title']}](<{post['url']}>)")
+        st.markdown(f"**🔗 貼文原網址**：[{post['title']}](<{post['url']}>)")
     with col2:
         tags_list = [tag.strip() for tag in post['tags'].split(',') if tag.strip()]
         tags_html = "".join(map(lambda tag: f"<span style='background-color: #2196F3; color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px; margin-right: 4px; display: inline-block; margin-bottom: 2px;'>{tag}</span>", tags_list))
@@ -154,21 +154,21 @@ def display_post_card(post: pd.Series):
 
     # Product opportunity section
     if post.get('product_opportunity'):
-        st.success(f"💡 **Suggested Solution:** {post['product_opportunity']}")
+        st.success(f"💡 **建議的解決方案 (MVP Solution):** {post['product_opportunity']}")
 
     # Add some white space
     st.markdown("")
 
     with st.expander(f"💡 檢視 SaaS 商機提案卡片 - #{post['id']}", expanded=True):
-        st.markdown("#### 📝 " + post['title'])
+        st.markdown("#### 📝 貼文原標題：" + post['title'])
         # Truncate long posts
         body_text = post['body'][:500] + "..." if len(post['body']) > 500 else post['body']
-        st.markdown(f"*{body_text}*")
+        st.markdown(f"*原貼文內文：{body_text}*")
 
         st.markdown("---")
 
         # Standard vertical layout with high contrast status blocks - 100% immune to Streamlit columns rendering bugs
-        st.markdown("##### 💡 AI 建議的 Micro-SaaS 產品點子")
+        st.markdown("##### 💡 AI 建議的 Micro-SaaS 產品點子 (Micro-SaaS Idea)")
         idea_val = post.get('micro_saas_idea') or post.get('product_opportunity') or '尚無明確 MVP 提案'
         st.info(idea_val)
 
@@ -176,7 +176,7 @@ def display_post_card(post: pd.Series):
         buyer_val = post.get('target_buyer') or post.get('affected_audience') or '泛 B 端/未知'
         st.success(f"**核心決策人**：{buyer_val}")
 
-        st.markdown("##### 💰 付費意願與付費訊號")
+        st.markdown("##### 💰 付費意願與付費訊號 (Willingness to Pay)")
         wtp_val = post.get('willingness_to_pay') or '尚無分析到具體預算或高昂的時間成本抱怨'
         st.warning(wtp_val)
 
@@ -194,8 +194,8 @@ def display_post_card(post: pd.Series):
         st.markdown(f"📊 **商業變現模型 (Business Model):** {post.get('business_model', '無')} | **開發複雜度:** {post.get('build_complexity', '無')}")
 
 def main():
-    st.title("📊 Reddit Posts Insights Viewer")
-    st.markdown("Browse and analyze Reddit posts with AI-generated insights")
+    st.title("📊 Reddit 貼文商機探測器 (Reddit Posts Insights Viewer)")
+    st.markdown("瀏覽並分析 Reddit 中高價值的 B 端商機與痛點 (AI-Generated Micro-SaaS Insights)")
 
     # Configuration
     cfg = get_config()
@@ -205,11 +205,11 @@ def main():
 
     # Check if files exist
     if not os.path.exists(db_path):
-        st.error(f"Database not found at {db_path}")
+        st.error(f"找不到資料庫：{db_path}")
         return
 
     if not os.path.exists(insights_dir):
-        st.error(f"Insights directory not found at {insights_dir}")
+        st.error(f"找不到 AI 分析目錄：{insights_dir}")
         return
 
     # Build cache-buster from current data file mtimes.
@@ -218,24 +218,24 @@ def main():
     data_version = max(os.path.getmtime(db_path), latest_insight_mtime)
 
     # Load data
-    with st.spinner("Loading posts and insights..."):
+    with st.spinner("載入貼文與 AI 商機提案中..."):
         try:
             df = load_posts_with_insights(db_path, insights_dir, provider, data_version)
         except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
+            st.error(f"資料加載失敗：{str(e)}")
             return
 
     if df.empty:
-        st.warning("No posts with processed insights found.")
+        st.warning("資料庫中尚無已完成分析的商機。請先執行 python main.py 進行爬取與分析！")
         return
 
-    st.success(f"Loaded {len(df)} posts with insights (provider: {provider})")
+    st.success(f"🎉 成功加載 {len(df)} 篇商機提案！(分析引擎: {provider})")
 
     # Sidebar filters
-    st.sidebar.header("🔧 Filters & Sorting")
+    st.sidebar.header("🔧 篩選器與排序 (Filters & Sorting)")
 
     # Score range filters
-    st.sidebar.subheader("Score Filters")
+    st.sidebar.subheader("分數過濾器 (Score Filters)")
 
     # Helper function to create safe sliders
     def create_safe_slider(label: str, values: pd.Series, key: str = None):
@@ -244,7 +244,7 @@ def main():
 
         # Handle case where all values are the same
         if min_val == max_val:
-            st.sidebar.write(f"**{label}**: {min_val:.2f} (all posts have same value)")
+            st.sidebar.write(f"**{label}**: {min_val:.2f} (所有貼文值皆相同)")
             return (min_val, max_val)
 
         return st.sidebar.slider(
@@ -256,11 +256,11 @@ def main():
             key=key
         )
 
-    roi_range = create_safe_slider("ROI Range", df['roi_weight'], "roi")
-    relevance_range = create_safe_slider("Relevance Score Range", df['relevance_score'], "relevance")
-    pain_range = create_safe_slider("Pain Score Range", df['pain_score'], "pain")
-    emotion_range = create_safe_slider("Emotion Score Range", df['emotion_score'], "emotion")
-    tech_depth_range = create_safe_slider("Technical Depth Range", df['technical_depth_score'], "tech_depth")
+    roi_range = create_safe_slider("ROI 權重範圍", df['roi_weight'], "roi")
+    relevance_range = create_safe_slider("關聯度範圍", df['relevance_score'], "relevance")
+    pain_range = create_safe_slider("痛點強度範圍", df['pain_score'], "pain")
+    emotion_range = create_safe_slider("情感強度範圍", df['emotion_score'], "emotion")
+    tech_depth_range = create_safe_slider("技術深度範圍", df['technical_depth_score'], "tech_depth")
 
     # High Willingness to Pay Filter
     st.sidebar.subheader("🎯 商業信號過濾")
@@ -273,22 +273,33 @@ def main():
     # Subreddit filter
     subreddits = df['subreddit'].unique().tolist()
     selected_subreddits = st.sidebar.multiselect(
-        "Subreddits",
+        "來源看板 (Subreddits)",
         options=subreddits,
         default=subreddits
     )
 
     # Sorting options
-    st.sidebar.subheader("Sorting")
-    sort_by = st.sidebar.selectbox(
-        "Sort by",
-        options=['relevance_score', 'pain_score', 'emotion_score', 'technical_depth_score', 'roi_weight', 'created_utc'],
+    st.sidebar.subheader("排序規則 (Sorting)")
+    sort_by_mapping = {
+        'relevance_score': '關聯度分數 (Relevance)',
+        'pain_score': '痛點強度分數 (Pain)',
+        'emotion_score': '情感強度分數 (Emotion)',
+        'technical_depth_score': '技術深度分數 (Tech Depth)',
+        'roi_weight': 'ROI 投資回報率',
+        'created_utc': '貼文發布時間 (Created)'
+    }
+    
+    sort_by_display = st.sidebar.selectbox(
+        "排序依據",
+        options=list(sort_by_mapping.values()),
         index=0
     )
+    # Get the raw column name from the display name
+    sort_by = [k for k, v in sort_by_mapping.items() if v == sort_by_display][0]
 
     sort_order = st.sidebar.radio(
-        "Sort order",
-        options=['Descending', 'Ascending'],
+        "排序順序",
+        options=['降冪 (Descending)', '升冪 (Ascending)'],
         index=0
     )
 
@@ -316,18 +327,18 @@ def main():
         ]
 
     # Apply sorting
-    ascending = sort_order == 'Ascending'
+    ascending = '升冪' in sort_order
     filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
 
     # Display results count
-    st.markdown(f"**Showing {len(filtered_df)} of {len(df)} posts**")
+    st.markdown(f"**目前顯示第 {len(filtered_df)} 筆，共 {len(df)} 筆商機提案**")
 
     # Pagination
     posts_per_page = 10
     total_pages = (len(filtered_df) + posts_per_page - 1) // posts_per_page
 
     if total_pages > 1:
-        page = st.selectbox("Page", range(1, total_pages + 1), index=0)
+        page = st.selectbox("分頁 (Page)", range(1, total_pages + 1), index=0)
         start_idx = (page - 1) * posts_per_page
         end_idx = start_idx + posts_per_page
         page_df = filtered_df.iloc[start_idx:end_idx]
@@ -340,12 +351,12 @@ def main():
 
     # Summary statistics
     if len(filtered_df) > 0:
-        st.sidebar.subheader("📈 Summary Stats")
-        st.sidebar.metric("Total Posts", len(filtered_df))
-        st.sidebar.metric("Avg Relevance", f"{filtered_df['relevance_score'].mean():.2f}")
-        st.sidebar.metric("Avg Pain Score", f"{filtered_df['pain_score'].mean():.2f}")
-        st.sidebar.metric("Avg Emotion Score", f"{filtered_df['emotion_score'].mean():.2f}")
-        st.sidebar.metric("Avg Tech Depth", f"{filtered_df['technical_depth_score'].mean():.2f}")
+        st.sidebar.subheader("📈 全局數據總覽 (Summary Stats)")
+        st.sidebar.metric("篩選後商機總數", len(filtered_df))
+        st.sidebar.metric("平均關聯度", f"{filtered_df['relevance_score'].mean():.2f}")
+        st.sidebar.metric("平均痛點分數", f"{filtered_df['pain_score'].mean():.2f}")
+        st.sidebar.metric("平均情感強度", f"{filtered_df['emotion_score'].mean():.2f}")
+        st.sidebar.metric("平均技術深度", f"{filtered_df['technical_depth_score'].mean():.2f}")
 
 if __name__ == "__main__":
     main()

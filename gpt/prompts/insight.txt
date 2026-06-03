@@ -44,26 +44,28 @@ Your task is to extract a concrete, actionable product opportunity:
 
 10. **Justification**: 1-2 sentences on why this is or isn't worth pursuing, referencing specific evidence from the post. If the idea is too simple to build (low technical moat), explicitly say so and explain why it's easily replicable.
 
-11. **Willingness to Pay (willingness_to_pay)**: Extract specific quotes or clear signs where the user mentions spending budget, wasting high-value hours, or calculating money/time costs (e.g. \"User spends 10 hours monthly on manual accounting, stating 'it costs too much'\").
+11. **Willingness to Pay (willingness_to_pay)**: Extract specific quotes or clear signs where the user mentions spending budget, wasting high-value hours, or calculating money/time costs (e.g. "User spends 10 hours monthly on manual accounting, stating 'it costs too much'").
 12. **Existing Workarounds (existing_workarounds)**: Detail the clumsy workarounds, manual Excel spreadsheets, copy-paste routines, or fragmented tools the user is currently forced to use to solve the problem.
 13. **Micro-SaaS Idea (micro_saas_idea)**: Propose a highly specific, lightweight software MVP (Micro-SaaS core concept) that a solo developer could build in 4-8 weeks to directly address this pain.
-14. **Target Buyer (target_buyer)**: Specify the exact professional, manager, or business owner who possesses both the budget and decision-making authority to purchase this Micro-SaaS tool (e.g. \"small agency owner, freelance consultant\").
+14. **Target Buyer (target_buyer)**: Specify the exact professional, manager, or business owner who possesses both the budget and decision-making authority to purchase this Micro-SaaS tool (e.g. "small agency owner, freelance consultant").
+
+CRITICAL REQUIREMENT: You MUST generate all text fields in your JSON response (specifically: "pain_point", "affected_audience", "existing_alternatives", "product_opportunity", "technical_moat", "business_model", "justification", "willingness_to_pay", "existing_workarounds", "micro_saas_idea", "target_buyer") in Traditional Chinese (繁體中文). Do not use Simplified Chinese.
 
 Respond with a JSON object like:
 {
-  "pain_point": "Freelance designers spend 3+ hours weekly chasing late payments across PayPal, Stripe, and bank transfers with no unified view.",
-  "affected_audience": "freelance designers and illustrators managing 5-20 active clients",
+  "pain_point": "獨立設計師每週花費 3 小時以上，在 PayPal、Stripe 和銀行轉帳之間手動追蹤逾期款項，缺乏統一視圖。",
+  "affected_audience": "管理 5-20 個活躍客戶的獨立設計師與插畫家",
   "business_type": "B2C",
-  "existing_alternatives": "FreshBooks (too expensive at $30/mo for solo), Wave (free but no payment tracking across processors), spreadsheets (manual and error-prone)",
-  "product_opportunity": "A lightweight payment tracker that auto-imports from PayPal, Stripe, and bank feeds, flags overdue invoices, and sends automated reminders. MVP: connect 2 payment sources + overdue alerts.",
+  "existing_alternatives": "FreshBooks (對個人而言每月 30 美元太貴), Wave (免費但缺乏跨支付商的自動對帳), 試算表 (手動且容易出錯)",
+  "product_opportunity": "一款輕量化支付追蹤工具，自動匯入 PayPal、Stripe 和銀行帳戶流水，自動標記逾期發票並發送提醒。MVP 核心功能：連接 2 個支付源 + 逾期警報。",
   "build_complexity": "medium",
-  "technical_moat": "Requires reliable real-time sync across 3+ payment APIs with different webhook formats, intelligent reconciliation logic to match partial payments across sources, and idempotent transaction processing to avoid double-counting. Not trivially replicable.",
-  "business_model": "Freemium — free for 1 payment source, $9/mo for unlimited",
+  "technical_moat": "需要與 3 個以上不同 webhook 格式的支付 API 進行即時同步，並具備智能對帳邏輯以匹配部分付款，以及冪等性交易處理以避免重複計算。不具備可輕易複製的特徵。",
+  "business_model": "訂閱制 (Freemium) — 1 個支付源免費，無限制使用每月 9 美元",
   "tags": ["invoicing", "freelancer-tools", "payments"],
   "roi_weight": 4,
-  "justification": "Large addressable market (millions of freelancers), clear willingness to pay (poster mentions paying $30/mo for FreshBooks), and meaningful integration complexity creates a real technical moat against quick clones.",
-  "willingness_to_pay": "User manually chases late payments 3 hours/week and explicitly mentions FreshBooks pricing is too expensive for solo.",
-  "existing_workarounds": "Currently manually reconciling transactions across bank statements, Stripe dashboard, and several Excel sheets.",
-  "micro_saas_idea": "A unified payment dashboard that connects with Stripe/PayPal and Plaid to auto-reconcile transactions and trigger alerts.",
-  "target_buyer": "Solo freelance creative professionals and small design agencies"
+  "justification": "龐大的受眾市場（數百萬自由職業者），明確的付費意願（發文者提及原使用 $30/月 的 FreshBooks 因預算放棄），具備一定技術複雜度以防止被競爭對手快速克隆。",
+  "willingness_to_pay": "用戶每週耗費 3 小時手動對帳，並明確指出 FreshBooks 對個人負擔過重，說明其需要一個更便宜的自動化替代方案。",
+  "existing_workarounds": "用戶目前在銀行流水、Stripe 後台與 Excel 表格之間手動核對帳目。",
+  "micro_saas_idea": "一個與 Stripe/PayPal 與 Plaid 銀行 API 串接的統一自動對帳看板，附帶逾期警報功能。",
+  "target_buyer": "自由職業創意工作者與中小型設計工作室"
 }
