@@ -25,7 +25,7 @@ A Python application that scrapes Reddit for potential marketing leads, analyzes
 
 ## 📋 Overview
 
-This tool uses a combination of Reddit's API and AI models (OpenAI or Anthropic) to:
+This tool uses a combination of Reddit's API and AI models (OpenAI, Anthropic, Gemini, or DeepSeek) to:
 
 1. Scrape relevant subreddits for discussions across diverse domains (tech, finance, parenting, fitness, business, and more)
 2. Identify posts that express pain points with real product-building potential
@@ -40,8 +40,8 @@ The application maintains a balance between focused and exploratory subreddits, 
 ### Prerequisites
 
 - Python 3.10+
-- Reddit API credentials ([create an app here](https://www.reddit.com/prefs/apps))
-- OpenAI API key **or** Anthropic API key (configurable via `config.yaml`)
+- **NO Reddit API Keys Required!** (The application completely bypasses the official API and uses a highly robust, headless Playwright scraping engine on `old.reddit.com`)
+- At least one AI provider API key — OpenAI, Anthropic, **Gemini**, or **DeepSeek** (configurable via `config.yaml`)
 
 ### Installation
 
@@ -62,25 +62,31 @@ The application maintains a balance between focused and exploratory subreddits, 
    pip install -r requirements.txt
    ```
 
-4. Set up environment variables by copying `.env.template` to `.env`:
+4. Install Playwright browser binaries (CRITICAL for scraping):
    ```
-   cp .env.template .env
+   playwright install chromium
    ```
 
-5. Edit `.env` and add your API credentials:
+5. Set up environment variables by copying `.env.providers.template` to `.env`:
    ```
-   REDDIT_CLIENT_ID=your_client_id
-   REDDIT_CLIENT_SECRET=your_client_secret
-   REDDIT_USER_AGENT=script:cronlytic-reddit-scraper:v1.0 (by /u/yourusername)
+   cp .env.providers.template .env
+   ```
+
+6. Edit `.env` and add your AI credentials:
+   ```
+   # .env
+   # Choose ONE (or more) AI provider:
    OPENAI_API_KEY=your_openai_api_key
    ANTHROPIC_API_KEY=your_anthropic_api_key
+   GEMINI_API_KEY=your_gemini_api_key       # https://aistudio.google.com/app/apikey
+   DEEPSEEK_API_KEY=your_deepseek_api_key  # https://platform.deepseek.com/api_keys
    ```
 
 ## 🔧 Configuration
 
 Configure the application by editing `config/config.yaml`. Key settings include:
 
-- **AI provider**: Choose between `openai` or `anthropic` as the batch processing backend
+- **AI provider**: Choose between `openai`, `anthropic`, `gemini`, or `deepseek` as the batch processing backend
 - **Target subreddits**: Primary subreddits and exploratory subreddit settings
 - **Post age range**: Only analyze posts within the configured age window
 - **API rate limits**: Prevent hitting Reddit API limits
@@ -88,6 +94,60 @@ Configure the application by editing `config/config.yaml`. Key settings include:
 - **Monthly budget**: Cap total API spending
 - **Scoring weights**: How to weight different factors (relevance, pain point clarity, emotional intensity, implementability, technical depth) when scoring posts
 - **Token limits**: Per-model enqueued token limits for batch API submissions
+
+### Switching AI Provider
+
+Open `config/config.yaml` and change the `provider` field:
+
+```yaml
+ai:
+  provider: gemini   # openai | anthropic | gemini | deepseek
+```
+
+Each provider section has its own model configuration:
+
+```yaml
+ai:
+  gemini:
+    model_filter: gemini-2.0-flash   # fast, cheap pre-filtering
+    model_deep:   gemini-2.5-pro     # high-quality insight extraction
+
+  deepseek:
+    model_filter: deepseek-chat
+    model_deep:   deepseek-chat
+```
+
+#### How the No-API-Key Playwright Scraper works
+
+The application completely bypasses Reddit's official API and its aggressive Cloudflare Bot protections:
+
+1. **`headless browser`** — Uses Playwright (Chromium) to simulate real human browsing behavior.
+2. **`old.reddit.com`** — Targets the highly static, lightweight legacy Reddit interface, completely avoiding modern Obfuscated Shadow DOM / React dynamic hydration.
+3. **`expando-button clicks`** — Automatically clicks the text-expanding elements to extract `selftext` (post body) instantly without issuing extra page requests.
+4. **`NSFW click-through`** — Automatically handles "Over 18" age-gating screens.
+5. **`Recursive comments extraction`** — If `include_comments` is enabled, navigates to the comments page and parses nested thread comments tree seamlessly.
+
+This parsed data is encapsulated into native `MockPost` and `MockComment` mock objects, matching PRAW classes perfectly, ensuring the rest of the SQLite database and AI adapters continue to run with zero alterations.
+
+#### How Gemini and DeepSeek batch processing works
+
+Neither Google AI Studio nor DeepSeek exposes a native async batch endpoint.
+The adapter layer handles this transparently:
+
+1. **`submit_batch`** — dispatches all requests concurrently via `ThreadPoolExecutor` (10 workers for Gemini, 5 for DeepSeek) and writes results to `data/batch_responses/{batch_id}.json`.
+2. **`poll_batch`** — immediately returns `completed` because processing is synchronous.
+3. **`fetch_batch_result`** / **`download_batch_results`** — reads the persisted JSON file and converts it to the same normalised JSONL format used by OpenAI/Anthropic.
+
+The rest of the pipeline (filtering, insight extraction, cost tracking, DB storage) is completely unaware of which provider is active.
+
+#### Provider capability matrix
+
+| Feature | OpenAI | Anthropic | Gemini | DeepSeek |
+|---|---|---|---|---|
+| Native async batch API | ✅ | ✅ | ❌ (simulated) | ❌ (simulated) |
+| JSON output mode | ✅ | ⚠️ (prompt hint) | ⚠️ (prompt hint) | ✅ |
+| Server-side rate limiting | quota-based | quota-based | per-key QPM | per-key RPM |
+| Cost relative to GPT-4o | baseline | ~similar | ~3–10× cheaper | ~5–15× cheaper |
 
 ## 🏃‍♀️ Running
 
@@ -166,10 +226,14 @@ Reddit_Scrapper/
 │   ├── reader.py            # Read queries
 │   ├── writer.py            # Write operations
 │   └── cleaner.py           # Old entry cleanup
-├── gpt/                     # AI integration (OpenAI & Anthropic)
+├── gpt/                     # AI integration layer
 │   ├── batch_api.py         # OpenAI Batch API submission & polling
 │   ├── anthropic_batch.py   # Anthropic Message Batches API integration
-│   ├── batch_provider.py    # Provider routing layer (OpenAI/Anthropic)
+│   ├── gemini_provider.py   # Gemini provider (concurrent generateContent)
+│   ├── deepseek_provider.py # DeepSeek provider (concurrent chat/completions)
+│   ├── provider_base.py     # ProviderBase abstract interface
+│   ├── batch_provider.py    # Provider routing layer (all four providers)
+│   ├── batch_provider_adapter.py  # Factory for ProviderBase adapters
 │   ├── filters.py           # Pre-filtering prompt builder
 │   ├── insights.py          # Deep insight prompt builder
 │   └── prompts/             # Prompt templates
@@ -221,7 +285,9 @@ The application includes several safeguards to control API costs:
 | **Rate Limiting**                         | ✅ Done | Real limiter applied to avoid Reddit bans             |
 | **Budget Control**                        | ✅ Done | Tracks monthly cost, blocks over-budget batches       |
 | **Daily Runner Pipeline**                 | ✅ Done | Logs step-by-step, fail-safe batch handling           |
-| **Anthropic Batch API Provider**          | ✅ Done | Full alternative to OpenAI with config-based switching |
+|| **Anthropic Batch API Provider**          | ✅ Done | Full alternative to OpenAI with config-based switching |
+|| **Gemini Provider**                       | ✅ Done | Concurrent generateContent via ThreadPoolExecutor      |
+|| **DeepSeek Provider**                     | ✅ Done | Concurrent chat/completions, OpenAI-compatible API     |
 | **Parallel Batch Processing**             | ✅ Done | Token-aware scheduling, partial result recovery       |
 | **Technical Depth Scoring**               | ✅ Done | Measures engineering complexity and defensibility      |
 | **Implementability Scoring**              | ✅ Done | Feasibility assessment with willingness-to-pay signals|
@@ -254,6 +320,8 @@ Thanks to the following people who have contributed to this project:
 - [PRAW (Python Reddit API Wrapper)](https://praw.readthedocs.io/)
 - [OpenAI API](https://platform.openai.com/docs/api-reference)
 - [Anthropic API](https://docs.anthropic.com/en/docs)
+- [Google Gemini API](https://ai.google.dev/api/generate-content)
+- [DeepSeek API](https://api-docs.deepseek.com)
 - [APScheduler](https://apscheduler.readthedocs.io/)
 - [Streamlit](https://streamlit.io/)
 

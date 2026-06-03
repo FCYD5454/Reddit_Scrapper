@@ -83,13 +83,17 @@ def update_post_filter_scores(post_id: str, scores: dict):
         print(f"[SQLite update_post_filter_scores Error] {e}")
 
 def update_post_insight(post_id: str, insight: dict):
-    """Update deeper insights (tags, roi_weight). Safe from overwriting with nulls."""
+    """Update deeper insights (tags, roi_weight, willingness_to_pay, etc.). Safe from overwriting with nulls."""
     conn = _get_connection()
     cursor = conn.cursor()
 
     fields = {
         "tags": ", ".join(insight["tags"]) if "tags" in insight else None,
-        "roi_weight": insight.get("roi_weight")
+        "roi_weight": insight.get("roi_weight"),
+        "willingness_to_pay": insight.get("willingness_to_pay"),
+        "existing_workarounds": insight.get("existing_workarounds"),
+        "micro_saas_idea": insight.get("micro_saas_idea"),
+        "target_buyer": insight.get("target_buyer")
     }
 
     updates = [f"{key} = ?" for key, value in fields.items() if value is not None]
@@ -123,3 +127,15 @@ def mark_insight_processed(post_id: str):
         conn.commit()
     except sqlite3.Error as e:
         print(f"[SQLite mark_insight_processed Error] {e}")
+
+def update_post_pinned_status(post_id: str, is_pinned: int):
+    """Pin or unpin a post to prevent it from being auto-deleted during database cleanup."""
+    conn = _get_connection()
+    try:
+        conn.execute("""
+        UPDATE posts SET is_pinned = ?
+        WHERE id = ?
+        """, (is_pinned, post_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"[SQLite update_post_pinned_status Error] {e}")

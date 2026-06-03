@@ -1,12 +1,12 @@
 # reddit/scraper.py
 
-import praw
 import datetime
 import os
 import socket
 import time
+import random
+from playwright.sync_api import sync_playwright
 
-from prawcore.exceptions import RequestException
 from db.reader import is_already_processed
 from db.writer import insert_post
 from reddit.discovery import discover_adjacent_subreddits
@@ -20,24 +20,61 @@ socket.setdefaulttimeout(10)  # Set global 10s timeout for HTTP
 log = setup_logger()
 config = get_config()
 
-# Initialize Reddit API client
-reddit = praw.Reddit(
-    client_id=config["reddit"]["client_id"],
-    client_secret=config["reddit"]["client_secret"],
-    user_agent=config["reddit"]["user_agent"],
-    username=config["reddit"]["username"],
-    password=config["reddit"]["password"]
-)
-
-limiter = RedditRateLimiter(config["scraper"].get("rate_limit_per_minute", 60))
+limiter = RedditRateLimiter(config["scraper"].get("rate_limit_per_minute", 30))
 EXPLORATORY_FILE = "data/exploratory_subreddits.json"
 
-def is_post_in_age_range(post, min_days, max_days) -> bool:
-    post_date = datetime.datetime.fromtimestamp(post.created_utc)
-    age_days = (datetime.datetime.utcnow() - post_date).days
-    return min_days <= age_days <= max_days
+# List of real-world user agents
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+]
 
-def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
+
+# ---------------------------------------------------------------------------
+# Mock classes to match PRAW objects perfectly so AI/DB flows remain untouched
+# ---------------------------------------------------------------------------
+
+class MockComment:
+    """Mock a PRAW Comment object."""
+    def __init__(self, data: dict):
+        self.id = data.get("id")
+        self.created_utc = data.get("created_utc")
+        self.body = data.get("body", "")
+        self.permalink = data.get("permalink", "")
+
+
+class MockComments:
+    """Mock a PRAW Comments collection."""
+    def __init__(self, comment_list: list):
+        self._comments = comment_list
+
+    def replace_more(self, limit=0):
+        pass
+
+    def list(self) -> list:
+        return self._comments
+
+
+class MockPost:
+    """Mock a PRAW Submission (Post) object."""
+    def __init__(self, data: dict, comments_list: list = None):
+        self.id = data.get("id")
+        self.title = data.get("title", "")
+        self.selftext = data.get("selftext", "") or data.get("body", "")
+        self.created_utc = data.get("created_utc")
+        self.permalink = data.get("permalink", "")
+        self.comments = MockComments(comments_list or [])
+
+
+# ---------------------------------------------------------------------------
+# Playwright Scraping Pipeline for old.reddit.com (Bypasses Cloudflare)
+# ---------------------------------------------------------------------------
+
+def fetch_posts_from_subreddit(subreddit_name: str, limit: int = 100) -> list:
+    """Scrape subreddit posts using Playwright headless browser on old.reddit.com."""
     min_days = config["scraper"]["min_post_age_days"]
     max_days = config["scraper"]["max_post_age_days"]
     include_comments = config["scraper"].get("include_comments", False)
@@ -54,30 +91,113 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
     comment_skip_dupl = 0
     comment_remaining = 0
 
-    try:
-        log.info(f"Fetching posts from r/{subreddit_name} using top, hot, and new...")
-        subreddit = reddit.subreddit(subreddit_name)
-        combined = []
+    log.info(f"Fetching posts from r/{subreddit_name} via Playwright (old.reddit.com)...")
+    start_time = time.time()
 
-        for fetch_name, fetch_method in [("top", subreddit.top(time_filter="month", limit=limit)),
-                                         ("hot", subreddit.hot(limit=limit)),
-                                         ("new", subreddit.new(limit=limit))]:
-            limiter.wait()  # Apply rate limit per API fetch
-            posts = safe_fetch(fetch_method, fetch_name)
-            combined.extend(posts)
+    raw_posts = []
 
-        log.info(f"Total fetched posts to process from r/{subreddit_name}: {len(combined)}")
-        start_time = time.time()
+    with sync_playwright() as p:
+        # Launch Chromium headless with anti-automation stealth flags
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
+        )
+        context = browser.new_context(
+            user_agent=random.choice(USER_AGENTS),
+            viewport={"width": 1280, "height": 800}
+        )
+        page = context.new_page()
 
-        for i, post in enumerate(combined):
-            if i % 10 == 0:
-                log.info(f"Processing post #{i+1}/{len(combined)}")
+        # Target Hot, Top, and New feeds on old.reddit.com
+        feeds = [
+            ("hot", f"https://old.reddit.com/r/{subreddit_name}/"),
+            ("top", f"https://old.reddit.com/r/{subreddit_name}/top/?t=month"),
+            ("new", f"https://old.reddit.com/r/{subreddit_name}/new/")
+        ]
 
-            if post.id in seen_ids:
-                post_skip_seen += 1
-                continue
-            seen_ids.add(post.id)
+        for feed_name, url in feeds:
+            try:
+                log.info(f"→ Navigating to {feed_name} feed: {url}")
+                page.goto(url, timeout=30000)
+                
+                # Check for "Over 18" NSFW click-through screen
+                nsfw_btn = page.query_selector("button[name='over18'][value='yes']")
+                if nsfw_btn:
+                    log.info("NSFW warning detected. Clicking Yes to proceed...")
+                    nsfw_btn.click()
+                    page.wait_for_timeout(1000)
 
+                # Wait for main posts table to load
+                page.wait_for_selector("#siteTable", timeout=15000)
+                page.wait_for_timeout(random.randint(1000, 2000))
+
+                # Find all post container elements (div.thing)
+                things = page.query_selector_all("#siteTable div.thing")
+                log.info(f"Found {len(things)} posts in {feed_name} feed.")
+
+                count = 0
+                for thing in things:
+                    if count >= limit:
+                        break
+
+                    fullname = thing.get_attribute("data-fullname")
+                    if not fullname or not fullname.startswith("t3_"):
+                        continue
+                    post_id = fullname[3:]
+
+                    if post_id in seen_ids:
+                        continue
+                    seen_ids.add(post_id)
+
+                    title_elem = thing.query_selector("a.title")
+                    title = title_elem.inner_text() if title_elem else ""
+
+                    permalink = thing.get_attribute("data-permalink") or ""
+
+                    # Extract created_utc from <time> datetime attribute
+                    time_elem = thing.query_selector("time.live-timestamp")
+                    created_utc = time.time()
+                    if time_elem:
+                        dt_attr = time_elem.get_attribute("datetime")
+                        if dt_attr:
+                            try:
+                                dt = datetime.datetime.fromisoformat(dt_attr.replace("Z", "+00:00"))
+                                created_utc = dt.timestamp()
+                            except Exception:
+                                pass
+
+                    # Extract selftext by clicking expando button if it's a text post
+                    selftext = ""
+                    expando_btn = thing.query_selector("div.expando-button.selftext.collapsed")
+                    if expando_btn:
+                        try:
+                            expando_btn.click()
+                            page.wait_for_timeout(400)  # Wait briefly for expando DOM to render
+                            md_elem = thing.query_selector("div.expando div.md")
+                            if md_elem:
+                                selftext = md_elem.inner_text()
+                        except Exception as e:
+                            log.debug(f"Failed to click expando for post {post_id}: {e}")
+
+                    raw_posts.append({
+                        "id": post_id,
+                        "title": title,
+                        "selftext": selftext,
+                        "created_utc": created_utc,
+                        "permalink": permalink,
+                    })
+                    count += 1
+
+            except Exception as e:
+                log.error(f"Failed to scrape feed {feed_name} for r/{subreddit_name}: {e}")
+
+        # Post-process all fetched raw posts
+        for p_data in raw_posts:
+            post = MockPost(p_data)
             created_at = datetime.datetime.fromtimestamp(post.created_utc)
             log.debug(f"Post {post.id} at {created_at.isoformat()} — {post.title[:60]}")
 
@@ -88,66 +208,129 @@ def fetch_posts_from_subreddit(subreddit_name, limit=200) -> list:
                 post_skip_dupl += 1
                 continue
 
+            comments_list = []
+            if include_comments and p_data.get("permalink"):
+                try:
+                    comments_url = f"https://old.reddit.com{p_data['permalink']}"
+                    log.info(f"→ Navigating to comments page: {comments_url}")
+                    page.goto(comments_url, timeout=25000)
+                    page.wait_for_timeout(random.randint(1000, 2000))
+
+                    # Parse all comment containers (div.comment)
+                    comment_divs = page.query_selector_all("div.comment")
+                    log.info(f"Found {len(comment_divs)} comment elements on page.")
+
+                    for c_div in comment_divs:
+                        c_fullname = c_div.get_attribute("data-fullname")
+                        if not c_fullname or not c_fullname.startswith("t1_"):
+                            continue
+                        c_id = c_fullname[3:]
+
+                        md_elem = c_div.query_selector("div.md")
+                        c_body = md_elem.inner_text() if md_elem else ""
+
+                        time_elem = c_div.query_selector("time.live-timestamp")
+                        c_utc = time.time()
+                        if time_elem:
+                            dt_attr = time_elem.get_attribute("datetime")
+                            if dt_attr:
+                                try:
+                                    dt = datetime.datetime.fromisoformat(dt_attr.replace("Z", "+00:00"))
+                                    c_utc = dt.timestamp()
+                                except Exception:
+                                    pass
+
+                        # Extract comment permalink
+                        c_perma = ""
+                        perma_elem = c_div.query_selector("a.bylink")
+                        if perma_elem:
+                            c_perma = perma_elem.get_attribute("href") or ""
+
+                        comments_list.append(MockComment({
+                            "id": c_id,
+                            "created_utc": c_utc,
+                            "body": c_body,
+                            "permalink": c_perma,
+                        }))
+
+                except Exception as e:
+                    log.warning(f"Failed to scrape comments for post {post.id}: {e}")
+
+            comment_fetched += len(comments_list)
+            post.comments = MockComments(comments_list)
+
+            # Safely format URL to avoid domain duplication
+            url = post.permalink
+            if url.startswith("/"):
+                url = f"https://www.reddit.com{url}"
+            else:
+                url = url.replace("old.reddit.com", "www.reddit.com")
+
             results.append({
                 "id": post.id,
                 "title": post.title,
                 "body": post.selftext,
                 "created_utc": post.created_utc,
                 "subreddit": subreddit_name,
-                "url": f"https://www.reddit.com{post.permalink}",
+                "url": url,
                 "type": "post"
             })
             post_remaining += 1
 
-            if include_comments:
-                try:
-                    limiter.wait()  # One API call to fetch all comments
-                    post.comments.replace_more(limit=0)
-                    comments_list = post.comments.list()
-                    comment_fetched += len(comments_list)
-                    for comment in comments_list:
-                        if comment.id in seen_ids:
-                            comment_skip_seen += 1
-                            continue
-                        seen_ids.add(comment.id)
+            if include_comments and comments_list:
+                for comment in comments_list:
+                    if comment.id in seen_ids:
+                        comment_skip_seen += 1
+                        continue
+                    seen_ids.add(comment.id)
 
-                        if not is_post_in_age_range(comment, min_days, max_days):
-                            comment_skip_age += 1
-                            continue
-                        if is_already_processed(comment.id):
-                            comment_skip_dupl += 1
-                            continue
+                    if not is_post_in_age_range(comment, min_days, max_days):
+                        comment_skip_age += 1
+                        continue
+                    if is_already_processed(comment.id):
+                        comment_skip_dupl += 1
+                        continue
 
-                        results.append({
-                            "id": comment.id,
-                            "title": post.title,
-                            "body": comment.body,
-                            "post_body": post.selftext,
-                            "created_utc": comment.created_utc,
-                            "subreddit": subreddit_name,
-                            "url": f"https://www.reddit.com{comment.permalink}",
-                            "type": "comment",
-                            "parent_post_id": post.id,
-                        })
-                        comment_remaining += 1
-                except Exception as e:
-                    log.warning(f"Failed to fetch comments for post {post.id}: {str(e)}")
+                    c_url = comment.permalink
+                    if c_url.startswith("/"):
+                        c_url = f"https://www.reddit.com{c_url}"
+                    else:
+                        c_url = c_url.replace("old.reddit.com", "www.reddit.com")
 
-        sum_fetched = len(combined) + comment_fetched
-        sum_skip_seen = post_skip_seen + comment_skip_seen
-        sum_skip_age = post_skip_age + comment_skip_age
-        sum_skip_dupl = post_skip_dupl + comment_skip_dupl
+                    results.append({
+                        "id": comment.id,
+                        "title": post.title,
+                        "body": comment.body,
+                        "post_body": post.selftext,
+                        "created_utc": comment.created_utc,
+                        "subreddit": subreddit_name,
+                        "url": c_url,
+                        "type": "comment",
+                        "parent_post_id": post.id,
+                    })
+                    comment_remaining += 1
 
-        log.info(f"{'r/' + subreddit_name:<25} | {'Fetched':<12} | {'Skip (seen)':<12} | {'Skip (age)':<12} | {'Skip (dup)':<12} | {'Remaining':<12}")
-        log.info(f"{'Posts':<25} | {len(combined):<12} | {post_skip_seen:<12} | {post_skip_age:<12} | {post_skip_dupl:<12} | {post_remaining:<12}")
-        log.info(f"{'Comments':<25} | {comment_fetched:<12} | {comment_skip_seen:<12} | {comment_skip_age:<12} | {comment_skip_dupl:<12} | {comment_remaining:<12}")
-        log.info(f"{'Sum':<25} | {sum_fetched:<12} | {sum_skip_seen:<12} | {sum_skip_age:<12} | {sum_skip_dupl:<12} | {len(results):<12}")
+        browser.close()
 
-    except Exception as e:
-        log.error(f"Error fetching from r/{subreddit_name}: {str(e)}")
+    sum_fetched = len(raw_posts) + comment_fetched
+    sum_skip_seen = post_skip_seen + comment_skip_seen
+    sum_skip_age = post_skip_age + comment_skip_age
+    sum_skip_dupl = post_skip_dupl + comment_skip_dupl
+
+    log.info(f"r/{subreddit_name:<25} | {'Fetched':<12} | {'Skip (seen)':<12} | {'Skip (age)':<12} | {'Skip (dup)':<12} | {'Remaining':<12}")
+    log.info(f"{'Posts':<25} | {len(raw_posts):<12} | {post_skip_seen:<12} | {post_skip_age:<12} | {post_skip_dupl:<12} | {post_remaining:<12}")
+    log.info(f"{'Comments':<25} | {comment_fetched:<12} | {comment_skip_seen:<12} | {comment_skip_age:<12} | {comment_skip_dupl:<12} | {comment_remaining:<12}")
+    log.info(f"{'Sum':<25} | {sum_fetched:<12} | {sum_skip_seen:<12} | {sum_skip_age:<12} | {sum_skip_dupl:<12} | {len(results):<12}")
 
     log.info(f"Finished processing posts from r/{subreddit_name} in {time.time() - start_time:.2f} seconds")
     return results
+
+
+def is_post_in_age_range(post, min_days, max_days) -> bool:
+    post_date = datetime.datetime.fromtimestamp(post.created_utc)
+    age_days = (datetime.datetime.now() - post_date).days
+    return min_days <= age_days <= max_days
+
 
 def get_exploratory_subreddits():
     if not os.path.exists(EXPLORATORY_FILE):
@@ -172,6 +355,7 @@ def update_exploratory_subreddits(new_subreddits):
     os.makedirs("data", exist_ok=True)
     save_json(data, EXPLORATORY_FILE)
     log.info(f"Updated exploratory subreddits: {', '.join(new_subreddits)}")
+
 
 def scrape_subreddits() -> list:
     """Scrapes the configured subreddits as well as exploratory ones."""
@@ -218,14 +402,3 @@ def scrape_subreddits() -> list:
 
     log.info(f"Total items scraped: {len(primary_posts)}")
     return primary_posts
-
-def safe_fetch(generator, name):
-    try:
-        log.info(f"→ Fetching {name}...")
-        return list(generator)
-    except (RequestException, socket.timeout) as e:
-        log.error(f"Timeout/error while fetching {name}: {e}")
-        return []
-    except Exception as e:
-        log.error(f"Unknown error while fetching {name}: {e}")
-        return []

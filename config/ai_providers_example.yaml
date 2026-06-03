@@ -1,0 +1,16 @@
+# Example fragment — merge into your existing config/config.yaml under ai:
+ai:
+  provider: gemini  # or deepseek or openai
+  gemini:
+    model_filter: \"gemini-mini\"
+    model_deep: \"gemini-pro\"
+    batch_size: 100
+    batch_timeout_seconds: 3600
+  deepseek:
+    model_filter: \"deepseek-small\"
+    model_deep: \"deepseek-large\"
+    batch_size: 100
+    batch_timeout_seconds: 3600
+  openai:
+    # existing openai config...
+
