@@ -1,0 +1,339 @@
+*** Begin Patch
+*** Add File: gpt/provider_base.py
++from typing import List, Dict, Any
++
++class ProviderBase:
++    \"\"\"Provider adapter interface — 所有 provider (OpenAI/Gemini/DeepSeek) 必須實作這些方法。\"\"\"
++
++    def submit_batch(self, payload: List[Dict[str, Any]]) -> str:
++        \"\"\"Submit a batch payload. Return provider-specific batch_id (string).\"\"\"
++        raise NotImplementedError
++
++    def poll_batch(self, batch_id: str, timeout_seconds: int = 10800) -> Dict[str, Any]:
++        \"\"\"Poll until batch completes or times out. Return dict with status and metadata.\"\"\"
++        raise NotImplementedError
++
++    def cancel_batch(self, batch_id: str) -> bool:
++        \"\"\"Cancel a running batch. Return True on success.\"\"\"
++        raise NotImplementedError
++
++    def fetch_batch_result(self, batch_id: str) -> List[Dict[str, Any]]:
++        \"\"\"Fetch normalized item-level results for a completed batch.
++        Must return a list of dicts with at least: {'id': ..., 'output': ..., 'usage': {...}}.\"\"\"
++        raise NotImplementedError
++
+*** End Patch
+*** Begin Patch
+*** Add File: gpt/gemini_batch.py
++import os
++import time
++from typing import List, Dict, Any
++import requests
++
++from .provider_base import ProviderBase
++try:
++    from utils.logger import setup_logger
++    log = setup_logger()
++except Exception:
++    import logging
++    log = logging.getLogger(__name__)
++
++GEMINI_API_KEY = os.getenv(\"GEMINI_API_KEY\")
++GEMINI_ENDPOINT = os.getenv(\"GEMINI_ENDPOINT\", \"https://api.gemini.example/v1/batch\")
++
++class GeminiProvider(ProviderBase):
++    def __init__(self, config: Dict[str, Any]):
++        self.config = config
++
++    def submit_batch(self, payload: List[Dict[str, Any]]) -> str:
++        \"\"\"Submit payload to Gemini Batch endpoint if available.
++        If Gemini has no batch endpoint, this function should orchestrate parallel requests and return a synthetic batch id.\"\"\"
++        if not GEMINI_API_KEY:
++            raise RuntimeError(\"GEMINI_API_KEY not set\")
++        # NOTE: This is a skeleton. Replace with real Gemini SDK or endpoint shape.
++        resp = requests.post(
++            GEMINI_ENDPOINT,
++            headers={\"Authorization\": f\"Bearer {GEMINI_API_KEY}\", \"Content-Type\": \"application/json\"},
++            json={\"items\": payload}
++        )
++        resp.raise_for_status()
++        data = resp.json()
++        return data.get(\"batch_id\") or data.get(\"id\") or \"\"
++
++    def poll_batch(self, batch_id: str, timeout_seconds: int = 10800) -> Dict[str, Any]:
++        start = time.time()
++        status_endpoint = f\"{GEMINI_ENDPOINT}/{batch_id}/status\"
++        while True:
++            resp = requests.get(status_endpoint, headers={\"Authorization\": f\"Bearer {GEMINI_API_KEY}\"})
++            resp.raise_for_status()
++            data = resp.json()
++            status = data.get(\"status\")
++            if status in (\"completed\", \"failed\", \"cancelled\", \"expired\"):
++                return {\"status\": status, \"meta\": data}
++            if time.time() - start > timeout_seconds:
++                return {\"status\": \"timeout\", \"meta\": data}
++            time.sleep(5)
++
++    def cancel_batch(self, batch_id: str) -> bool:
++        try:
++            resp = requests.post(f\"{GEMINI_ENDPOINT}/{batch_id}/cancel\", headers={\"Authorization\": f\"Bearer {GEMINI_API_KEY}\"})
++            resp.raise_for_status()
++            return True
++        except Exception as e:
++            log.warning(f\"Failed to cancel Gemini batch {batch_id}: {e}\")
++            return False
++
++    def fetch_batch_result(self, batch_id: str) -> List[Dict[str, Any]]:
++        resp = requests.get(f\"{GEMINI_ENDPOINT}/{batch_id}/results\", headers={\"Authorization\": f\"Bearer {GEMINI_API_KEY}\"})
++        resp.raise_for_status()
++        data = resp.json()
++        results = []
++        for item in data.get(\"items\", []):
++            results.append({
++                \"id\": item.get(\"id\"),
++                \"output\": item.get(\"output_text\") or item.get(\"response\"),
++                \"usage\": item.get(\"usage\", {})
++            })
++        return results
++
+*** End Patch
+*** Begin Patch
+*** Add File: gpt/utils.py
++import itertools
++from typing import Iterable, List, Iterator, TypeVar
++
++T = TypeVar('T')
++
++def chunked(iterable: Iterable[T], size: int) -> Iterator[List[T]]:
++    \"\"\"Yield successive chunks of size `size` from `iterable`.\"\"\"
++    it = iter(iterable)
++    while True:
++        chunk = list(itertools.islice(it, size))
++        if not chunk:
++            break
++        yield chunk
++
+*** End Patch
+*** Begin Patch
+*** Add File: gpt/batch_provider_adapter.py
++from config.config_loader import get_config
++
++def get_provider_instance():
++    cfg = get_config()
++    provider = cfg.get(\"ai\", {}).get(\"provider\", \"openai\").lower()
++    if provider == \"gemini\":
++        from .gemini_batch import GeminiProvider
++        return GeminiProvider(cfg)
++    if provider == \"deepseek\":
++        from .deepseek_batch import DeepSeekProvider  # optional file if you implement it
++        return DeepSeekProvider(cfg)
++    # fallback to existing openai provider if present
++    try:
++        from .openai_batch import OpenAIProvider
++        return OpenAIProvider(cfg)
++    except Exception:
++        # If no OpenAI provider present, raise an informative error
++        raise RuntimeError(\"No supported AI provider implementation found. Check ai.provider in config.\")
++
+*** End Patch
+*** Begin Patch
+*** Add File: config/ai_providers_example.yaml
++# Example fragment — merge into your existing config/config.yaml under ai:
++ai:
++  provider: gemini  # or deepseek or openai
++  gemini:
++    model_filter: \"gemini-mini\"
++    model_deep: \"gemini-pro\"
++    batch_size: 100
++    batch_timeout_seconds: 3600
++  deepseek:
++    model_filter: \"deepseek-small\"
++    model_deep: \"deepseek-large\"
++    batch_size: 100
++    batch_timeout_seconds: 3600
++  openai:
++    # existing openai config...
++
+*** End Patch
+*** Begin Patch
+*** Add File: .env.providers.template
++# Google Gemini
++GEMINI_API_KEY=your_gemini_api_key
++GEMINI_ENDPOINT=https://api.gemini.example/v1
++
++# DeepSeek (if used)
++DEEPSEEK_API_KEY=your_deepseek_api_key
++DEEPSEEK_ENDPOINT=https://api.deepseek.example/v1
++
+*** End Patch
+*** Begin Patch
+*** Add File: db/migrations/001_add_batch_metadata.sql
++CREATE TABLE IF NOT EXISTS batch_metadata (
++  batch_id TEXT PRIMARY KEY,
++  provider TEXT,
++  enqueued_at TEXT,
++  status TEXT,
++  estimated_cost REAL,
++  completed_at TEXT,
++  raw_response JSON
++);
++CREATE INDEX IF NOT EXISTS idx_batch_metadata_status ON batch_metadata(status);
++
+*** End Patch
+*** Begin Patch
+*** Add File: db/writer_adapters.py
++\"\"\"輔助的 DB writer helper — 不會覆寫原有 writer.py，供新的 batch metadata 使用。\"\"\"
++from datetime import datetime
++import sqlite3
++from typing import List
++try:
++    # 嘗試重用現有的 reader 連線建立函式（如果 repo 已有）
++    from db.reader import _get_connection
++except Exception:
++    def _get_connection():
++        # fallback: 使用 data/db.sqlite（若你的 repo db path 不同請調整）
++        return sqlite3.connect('data/db.sqlite', detect_types=sqlite3.PARSE_DECLTYPES)
++
++import json
++try:
++    from utils.logger import setup_logger
++    log = setup_logger()
++except Exception:
++    import logging
++    log = logging.getLogger(__name__)
++
++def insert_batch_metadata(batch_id: str, provider: str, estimated_cost: float = None):
++    conn = _get_connection()
++    try:
++        conn.execute(\"\"\"
++            INSERT OR REPLACE INTO batch_metadata (batch_id, provider, enqueued_at, status, estimated_cost, raw_response)
++            VALUES (?, ?, ?, ?, ?, ?)
++        \"\"\", (batch_id, provider, datetime.utcnow().isoformat(), \"enqueued\", estimated_cost, None))
++        conn.commit()
++    except Exception as e:
++        log.error(f\"insert_batch_metadata error: {e}\")
++
++def batch_insert_posts(posts: List[dict], community_type: str = \"primary\"):
++    if not posts:
++        return
++    conn = _get_connection()
++    try:
++        conn.execute(\"BEGIN\")
++        rows = []
++        for p in posts:
++            rows.append((
++                p.get(\"id\"), p.get(\"url\"), p.get(\"title\"), p.get(\"body\", \"\"), p.get(\"subreddit\"),
++                p.get(\"created_utc\"), datetime.utcnow().isoformat(), community_type, p.get(\"type\", \"post\"), p.get(\"post_body\", \"\"), p.get(\"parent_post_id\")
++            ))
++        conn.executemany(\"\"\"
++            INSERT OR IGNORE INTO posts (id, url, title, body, subreddit, created_utc, processed_at, community_type, type, post_body, parent_post_id)
++            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++        \"\"\", rows)
++        conn.commit()
++    except Exception as e:
++        conn.rollback()
++        log.error(f\"batch_insert_posts failed: {e}\")
++
+*** End Patch
+*** Begin Patch
+*** Add File: gpt/mocks/mock_provider.py
++from typing import List, Dict, Any
++import time
++from .provider_base import ProviderBase
++
++class MockProvider(ProviderBase):
++    \"\"\"A simple mock provider for local testing. Returns synthetic ids and echoes input.\"\"\"
++    def __init__(self, config: Dict[str, Any] = None):
++        self.config = config or {}
++        self._batches = {}
++
++    def submit_batch(self, payload: List[Dict[str, Any]]) -> str:
++        batch_id = f\"mockbatch_{int(time.time()*1000)}\"
++        # store payload and create synthetic pending status
++        self._batches[batch_id] = {\"status\": \"pending\", \"items\": payload}
++        # simulate asynchronous processing in background (not actually threaded here)
++        # consumer tests can call poll_batch then fetch_batch_result
++        return batch_id
++
++    def poll_batch(self, batch_id: str, timeout_seconds: int = 30):
++        # For mock, we simulate immediate completion
++        if batch_id not in self._batches:
++            return {\"status\": \"not_found\", \"meta\": {}}
++        self._batches[batch_id][\"status\"] = \"completed\"
++        return {\"status\": \"completed\", \"meta\": {\"items\": len(self._batches[batch_id][\"items\"]) }}
++
++    def cancel_batch(self, batch_id: str) -> bool:
++        if batch_id in self._batches:
++            self._batches[batch_id][\"status\"] = \"cancelled\"
++            return True
++        return False
++
++    def fetch_batch_result(self, batch_id: str) -> List[Dict[str, Any]]:
++        b = self._batches.get(batch_id)
++        if not b:
++            return []
++        results = []
++        for i, item in enumerate(b.get(\"items\", [])):
++            results.append({
++                \"id\": item.get(\"id\") or f\"item_{i}\",
++                \"output\": item.get(\"input\", \"\") + \" - mocked response\",
++                \"usage\": {\"tokens\": 1}
++            })
++        return results
++
+*** End Patch
+*** Begin Patch
+*** Add File: tests/test_providers.py
++import pytest
++from gpt.mocks.mock_provider import MockProvider
++
++def test_mock_provider_lifecycle():
++    provider = MockProvider()
++    payload = [{\"id\": \"p1\", \"input\": \"Hello\"}, {\"id\": \"p2\", \"input\": \"World\"}]
++    batch_id = provider.submit_batch(payload)
++    assert batch_id.startswith(\"mockbatch_\")
++    status = provider.poll_batch(batch_id)
++    assert status[\"status\"] == \"completed\"
++    results = provider.fetch_batch_result(batch_id)
++    assert isinstance(results, list)
++    assert len(results) == 2
++    assert results[0][\"id\"] == \"p1\"
++    assert \"mocked response\" in results[0][\"output\"]
++
+*** End Patch
+*** Begin Patch
+*** Add File: requirements-dev.txt
++pytest
++requests
++
+*** End Patch
+*** Begin Patch
+*** Add File: .github/workflows/ci-providers.yml
++name: CI - Providers Tests
++
++on:
++  push:
++    branches:
++      - feature/provider-adapters-gemini-deepseek
++  pull_request:
++    branches: [ main ]
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - name: Setup Python
++        uses: actions/setup-python@v4
++        with:
++          python-version: '3.10'
++      - name: Install deps
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements-dev.txt
++      - name: Run tests
++        run: |
++          pytest -q
++
+*** End Patch
+*** End Patch

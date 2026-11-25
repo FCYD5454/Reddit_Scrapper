@@ -22,7 +22,7 @@ def clean_old_entries():
 
     c.execute("""
     DELETE FROM posts
-    WHERE processed_at < ?
+    WHERE processed_at < ? AND is_pinned = 0
     """, (cutoff_date,))
     posts_deleted = c.rowcount
 

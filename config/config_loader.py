@@ -21,16 +21,19 @@ def get_config():
         raw_config = yaml.safe_load(f)
 
     # Inject secrets from .env
-    raw_config["reddit"] = {
-        "client_id": os.getenv("REDDIT_CLIENT_ID"),
-        "client_secret": os.getenv("REDDIT_CLIENT_SECRET"),
-        "user_agent": os.getenv("REDDIT_USER_AGENT"),
-        "username": os.getenv("REDDIT_USERNAME"),      # Added
-        "password": os.getenv("REDDIT_PASSWORD"),      # Added
-    }
+    raw_config["reddit"] = {}
 
     raw_config["ai"]["openai"]["api_key"] = os.getenv("OPENAI_API_KEY")
     raw_config["ai"]["anthropic"]["api_key"] = os.getenv("ANTHROPIC_API_KEY")
+
+    # Inject Gemini and DeepSeek API keys from environment
+    if "gemini" not in raw_config["ai"]:
+        raw_config["ai"]["gemini"] = {}
+    raw_config["ai"]["gemini"]["api_key"] = os.getenv("GEMINI_API_KEY")
+
+    if "deepseek" not in raw_config["ai"]:
+        raw_config["ai"]["deepseek"] = {}
+    raw_config["ai"]["deepseek"]["api_key"] = os.getenv("DEEPSEEK_API_KEY")
 
     # Backward compatibility: expose provider-specific config at top level
     # so existing code using config["openai"] still works during migration
